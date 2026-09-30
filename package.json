@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test tests/logic.test.mjs"
+    "test": "node --test tests/logic.test.mjs",
+    "preview": "node preview/server.mjs"
   }
 }
