@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html><head><base target="_top"><style>
+body{font-family:Google Sans,Roboto,Arial,sans-serif;margin:12px;color:#202124}
+.card{background:#f8f9fa;border:1px solid #e8eaed;border-radius:8px;padding:10px;margin-bottom:8px}
+.label{font-size:11px;color:#5f6368}.value{font-size:20px;font-weight:600}
+button{width:100%;padding:8px;border:0;border-radius:6px;background:#1a73e8;color:#fff;font-weight:600;cursor:pointer;margin-top:8px}
+</style></head><body>
+<h3 style="margin:0 0 8px">Control Tower</h3>
+<div id="m"></div>
+<button onclick="load()">Refresh</button>
+<script>
+function load(){
+  google.script.run.withSuccessHandler(function(x){
+    document.getElementById('m').innerHTML=
+      [['Total',x.total],['P1',x.p1],['P2',x.p2],['P3',x.p3],['Deployed',x.deployed],['Avg',x.avgScore]]
+      .map(function(r){return '<div class="card"><div class="label">'+r[0]+'</div><div class="value">'+r[1]+'</div></div>';}).join('');
+  }).getOverviewMetrics();
+}
+load();
+</script>
+</body></html>

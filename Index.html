@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GitHub Control Tower</title>
+  <style>
+    :root {
+      --md-sys-color-primary: #1a73e8;
+      --md-sys-color-on-primary: #fff;
+      --md-sys-color-surface: #f8f9fa;
+      --md-sys-color-on-surface: #202124;
+      --md-sys-color-outline: #e8eaed;
+      --md-sys-color-error: #c5221f;
+      --md-sys-color-secondary: #5f6368;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: "Google Sans", Roboto, Arial, sans-serif; background: var(--md-sys-color-surface); color: var(--md-sys-color-on-surface); }
+    header.appbar { display: flex; align-items: center; gap: 12px; padding: 12px 20px; background: #fff; border-bottom: 1px solid var(--md-sys-color-outline); position: sticky; top: 0; z-index: 10; }
+    header h1 { font-size: 18px; margin: 0; font-weight: 600; }
+    nav { display: flex; gap: 4px; flex-wrap: wrap; margin-left: auto; }
+    nav button { border: 0; background: transparent; padding: 8px 12px; border-radius: 20px; cursor: pointer; color: var(--md-sys-color-secondary); font-weight: 500; }
+    nav button.active { background: #e8f0fe; color: var(--md-sys-color-primary); }
+    main { padding: 20px; max-width: 1200px; margin: 0 auto; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+    .card { background: #fff; border: 1px solid var(--md-sys-color-outline); border-radius: 12px; padding: 14px; }
+    .card .label { font-size: 12px; color: var(--md-sys-color-secondary); }
+    .card .value { font-size: 24px; font-weight: 600; margin-top: 4px; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+    input, select { padding: 8px 10px; border: 1px solid var(--md-sys-color-outline); border-radius: 8px; font: inherit; }
+    table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 12px; overflow: hidden; border: 1px solid var(--md-sys-color-outline); font-size: 13px; }
+    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--md-sys-color-outline); vertical-align: top; }
+    th { background: #f1f3f4; font-weight: 600; }
+    a { color: var(--md-sys-color-primary); text-decoration: none; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+    .p1 { background: #fce8e6; color: #c5221f; } .p2 { background: #fef7e0; color: #e37400; } .p3 { background: #e8f0fe; color: #1a73e8; }
+    .err { color: var(--md-sys-color-error); margin: 8px 0; }
+    .meta { color: var(--md-sys-color-secondary); font-size: 12px; margin-bottom: 12px; }
+    .hidden { display: none; }
+    @media (max-width: 640px) { main { padding: 12px; } th:nth-child(n+4), td:nth-child(n+4) { display: none; } }
+  </style>
+</head>
+<body>
+  <header class="appbar">
+    <h1>GitHub Control Tower</h1>
+    <nav>
+      <button data-page="overview" class="active">Overview</button>
+      <button data-page="inventory">Inventory</button>
+      <button data-page="priorities">Priorities</button>
+      <button data-page="deploy">Deploy</button>
+      <button data-page="webhooks">Webhooks</button>
+    </nav>
+  </header>
+  <main>
+    <div class="meta" id="meta">Loading…</div>
+    <div id="err" class="err"></div>
+
+    <section id="page-overview">
+      <div class="grid" id="kpi"></div>
+    </section>
+
+    <section id="page-inventory" class="hidden">
+      <div class="toolbar">
+        <input id="q" placeholder="Search repos…" style="min-width:180px;flex:1">
+        <select id="pri"><option value="">Priority</option><option>P1</option><option>P2</option><option>P3</option></select>
+        <select id="dep"><option value="">Deploy</option><option value="deployed">deployed</option><option value="failure">failure</option><option value="partial">partial</option></select>
+        <button onclick="loadInventory()" style="background:var(--md-sys-color-primary);color:#fff;border:0;border-radius:8px;padding:8px 14px;cursor:pointer">Filter</button>
+      </div>
+      <div id="inv-wrap"></div>
+    </section>
+
+    <section id="page-priorities" class="hidden"><div id="pri-wrap"></div></section>
+    <section id="page-deploy" class="hidden"><div id="dep-wrap"></div></section>
+    <section id="page-webhooks" class="hidden"><div id="wh-wrap"></div></section>
+  </main>
+  <script>
+    var initialPage = <?!= JSON.stringify(initialPage || "overview") ?>;
+    function showErr(m){ document.getElementById('err').textContent = m || ''; }
+    function setPage(name){
+      document.querySelectorAll('main > section').forEach(function(s){ s.classList.add('hidden'); });
+      document.getElementById('page-'+name).classList.remove('hidden');
+      document.querySelectorAll('nav button').forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-page')===name); });
+      if(name==='overview') loadOverview();
+      if(name==='inventory') loadInventory();
+      if(name==='priorities') loadPriorities();
+      if(name==='deploy') loadDeploy();
+      if(name==='webhooks') loadWebhooks();
+    }
+    document.querySelectorAll('nav button').forEach(function(b){
+      b.addEventListener('click', function(){ setPage(b.getAttribute('data-page')); });
+    });
+    function pill(p){ return '<span class="pill '+(String(p||'').toLowerCase())+'">'+(p||'')+'</span>'; }
+    function loadOverview(){
+      showErr('');
+      google.script.run.withSuccessHandler(function(m){
+        document.getElementById('meta').textContent = 'Updated '+m.generatedAt+' · '+m.total+' repos';
+        var items=[['Total',m.total],['P1',m.p1],['P2',m.p2],['P3',m.p3],['NVIDIA',m.nvidia],['GCP',m.gcp],['Deployed',m.deployed],['With CI',m.withCi],['Avg score',m.avgScore]];
+        document.getElementById('kpi').innerHTML = items.map(function(x){return '<div class="card"><div class="label">'+x[0]+'</div><div class="value">'+x[1]+'</div></div>';}).join('');
+      }).withFailureHandler(function(e){ showErr(e.message||e); }).getOverviewMetrics();
+    }
+    function loadInventory(){
+      showErr('');
+      var f={ q: document.getElementById('q').value, priority: document.getElementById('pri').value, deploy: document.getElementById('dep').value };
+      google.script.run.withSuccessHandler(function(res){
+        document.getElementById('meta').textContent = res.total+' matching repos (showing up to 500)';
+        var rows=res.rows||[];
+        var html='<table><thead><tr><th>Repo</th><th>Pri</th><th>Stars</th><th>Deploy</th><th>CI</th><th>Category</th></tr></thead><tbody>';
+        rows.forEach(function(r){
+          var url=r.URL||('#');
+          html+='<tr><td><a href="'+url+'" target="_blank" rel="noopener">'+(r.Repo||'')+'</a></td><td>'+pill(r.Priority)+'</td><td>'+(r.Stars||'')+'</td><td>'+(r['Deploy status']||'')+'</td><td>'+(r['Has CI']||'')+'</td><td>'+(r.Category||'')+'</td></tr>';
+        });
+        html+='</tbody></table>';
+        document.getElementById('inv-wrap').innerHTML=html;
+      }).withFailureHandler(function(e){ showErr(e.message||e); }).getInventoryRows(f);
+    }
+    function loadPriorities(){
+      google.script.run.withSuccessHandler(function(res){
+        var rows=res.rows||[];
+        var html='<table><thead><tr><th>Pri</th><th>Repo</th><th>Action</th><th>Status</th></tr></thead><tbody>';
+        rows.forEach(function(r){
+          html+='<tr><td>'+pill(r.Priority)+'</td><td>'+(r.Repo||'')+'</td><td>'+(r.Action||'')+'</td><td>';
+          if(res.canEdit){
+            html+='<select data-repo="'+String(r.Repo||'').replace(/"/g,'&quot;')+'" onchange="saveStatus(this)">';
+            ['Open','In progress','Partial — code merged','Done','Blocked'].forEach(function(s){
+              html+='<option'+(r.Status===s?' selected':'')+'>'+s+'</option>';
+            });
+            html+='</select>';
+          } else html+=(r.Status||'');
+          html+='</td></tr>';
+        });
+        html+='</tbody></table>';
+        document.getElementById('pri-wrap').innerHTML=html;
+      }).withFailureHandler(function(e){ showErr(e.message||e); }).getPriorities();
+    }
+    function saveStatus(el){
+      google.script.run.withSuccessHandler(function(){ showErr(''); }).withFailureHandler(function(e){ showErr(e.message||e); }).updatePriorityStatus(el.getAttribute('data-repo'), el.value);
+    }
+    function loadDeploy(){
+      google.script.run.withSuccessHandler(function(res){
+        var rows=res.rows||[];
+        var html='<table><thead><tr><th>Repo</th><th>Platform</th><th>Status</th><th>Live URL</th><th>CI</th></tr></thead><tbody>';
+        rows.forEach(function(r){
+          var u=r['Live URL']||'';
+          html+='<tr><td>'+(r.Repo||'')+'</td><td>'+(r.Platform||'')+'</td><td>'+(r['Deploy status']||'')+'</td><td>'+(u?'<a href="'+u+'" target="_blank" rel="noopener">link</a>':'')+'</td><td>'+(r.CI||'')+'</td></tr>';
+        });
+        html+='</tbody></table>';
+        document.getElementById('dep-wrap').innerHTML=html;
+      }).withFailureHandler(function(e){ showErr(e.message||e); }).getDeployRows();
+    }
+    function loadWebhooks(){
+      google.script.run.withSuccessHandler(function(h){
+        var html='<div class="card" style="margin-bottom:12px"><div class="label">Webhook secret configured</div><div class="value" style="font-size:16px">'+(h.secretSet?'Yes':'No — set GITHUB_WEBHOOK_SECRET')+'</div>';
+        if(h.webAppUrl) html+='<div class="meta" style="margin-top:8px">POST '+h.webAppUrl+'?token=YOUR_SECRET</div>';
+        html+='</div><table><thead><tr><th>When</th><th>Event</th><th>Repo</th><th>Action</th><th>Result</th></tr></thead><tbody>';
+        (h.events||[]).forEach(function(e){ html+='<tr><td>'+e.at+'</td><td>'+e.event+'</td><td>'+e.repo+'</td><td>'+e.action+'</td><td>'+e.result+'</td></tr>'; });
+        html+='</tbody></table>';
+        document.getElementById('wh-wrap').innerHTML=html;
+      }).withFailureHandler(function(e){ showErr(e.message||e); }).getWebhookHealth();
+    }
+    setPage(initialPage || 'overview');
+  </script>
+</body>
+</html>
