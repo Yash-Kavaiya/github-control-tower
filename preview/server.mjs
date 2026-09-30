@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const port = Number(process.env.PREVIEW_PORT || 41773);
-const sources = ['Main.gs', 'Api.gs', 'Webhook.gs'].map((name) => readFileSync(path.join(root, name), 'utf8')).join('\n');
+const sources = ['Main.gs', 'Api.gs', 'Webhook.gs', 'Ai.gs'].map((name) => readFileSync(path.join(root, name), 'utf8')).join('\n');
 const page = readFileSync(path.join(root, 'Index.html'), 'utf8');
 
 const sample = `
@@ -15,8 +15,19 @@ var SAMPLE_ROWS = [
   { repo: 'sample-org/nvidia-inference-demo', url: 'https://github.com/sample-org/nvidia-inference-demo', description: 'Sample GPU demo so the NVIDIA KPI has something to count.', visibility: 'Public', stars: 40, fork: 'No', topics: 'nvidia, triton', hasReadme: 'Yes', hasCi: 'Yes', deployStatus: 'Deployed', security: '1', category: 'NVIDIA', stack: 'Python, Triton', score: 9, priority: 'P1 this week', plan: 'Track deploy workflow.' },
   { repo: 'sample-org/cloud-run-status', url: 'https://github.com/sample-org/cloud-run-status', description: 'Sample Cloud Run service.', visibility: 'Private', stars: 2, fork: 'No', topics: 'gcp, cloud run', hasReadme: 'Yes', hasCi: 'No', deployStatus: 'Failed', security: '', category: 'Google Cloud', stack: 'Go', score: 7, priority: 'P2', plan: 'Fix the release workflow.' },
   { repo: 'sample-org/vertex-notebooks', url: 'https://github.com/sample-org/vertex-notebooks', description: 'Sample Vertex and BigQuery workspace.', visibility: 'Private', stars: 1, fork: 'Yes', topics: 'bigquery, vertex', hasReadme: 'No', hasCi: '', deployStatus: 'Ready to deploy', security: '', category: 'Research', stack: 'Python', score: 6, priority: 'P3', plan: '' },
-  { repo: 'sample-org/readme-only', url: '', description: 'Sample row with no URL, so the empty-link state is visible.', visibility: 'Public', stars: 0, fork: 'No', topics: '', hasReadme: 'Yes', hasCi: 'Yes', deployStatus: '', security: '', category: 'Learning', stack: '', score: '', priority: 'Later', plan: 'Add the GitHub URL.' }
+  { repo: 'sample-org/readme-only', url: '', description: 'Sample row with no URL, so the empty-link state is visible.', visibility: 'Public', stars: 0, fork: 'No', topics: '', hasReadme: 'Yes', hasCi: 'Yes', deployStatus: '', security: '', category: 'Learning', stack: '', score: '', priority: 'Later', plan: 'Add the GitHub URL.' },
+  { repo: 'sample-org/unclassified-notes', url: 'https://github.com/sample-org/unclassified-notes', description: 'Sample row with no priority so Classify next N has a target.', visibility: 'Public', stars: 0, fork: 'No', topics: 'notes', hasReadme: 'Yes', hasCi: 'No', deployStatus: '', security: '', category: 'Learning', stack: '', score: '', priority: '', plan: '' }
 ];
+var PREVIEW_CLASSIFICATION = '{"priority":"P2","tech_stack":"Apps Script, Sheets","deploy_status":"demo","rationale":"Preview sample only. No live model was called.","tags":["preview"]}';
+function previewClassifyRow(row) {
+  var parsed = parseGeminiClassification_(PREVIEW_CLASSIFICATION);
+  if (!parsed.ok) return { ok: false, repo: row.repo, error: parsed.error };
+  var patch = classificationSheetPatch_(parsed.classification, row);
+  if (patch.priority) row.priority = patch.priority;
+  if (patch.stack) row.stack = patch.stack;
+  if (patch.deployStatus) row.deployStatus = patch.deployStatus;
+  return { ok: true, repo: row.repo, classification: parsed.classification, updated: Object.keys(patch) };
+}
 var SAMPLE_PRIORITIES = {
   missing: false,
   sheetName: 'Today & Priorities',
@@ -88,6 +99,8 @@ function makeRunner() {
       ok({
         secretConfigured: true,
         tokenConfigured: false,
+        geminiConfigured: true,
+        autoClassify: false,
         editorsConfigured: false,
         editable: true,
         webAppUrl: 'https://script.google.com/macros/s/preview/exec',
@@ -105,6 +118,58 @@ function makeRunner() {
       if (!row) { fail(new Error('No inventory row matches that repository.')); return; }
       row.stars = Number(row.stars || 0) + 1;
       ok({ ok: true, repo: repo, updated: ['stars'] });
+    },
+    getAiStatus: function () {
+      ok({
+        geminiConfigured: true,
+        githubTokenConfigured: false,
+        autoClassify: false,
+        model: 'gemini-3.8-flash',
+        editable: true
+      });
+    },
+    classifyInventoryBatch: function (limit) {
+      var partition = partitionUnclassified_(SAMPLE_ROWS, limit);
+      if (!partition.ready.length) {
+        ok({
+          ok: true,
+          classified: 0,
+          limit: partition.limit,
+          skipped: partition.skipped,
+          error: '',
+          message: partition.skipped
+            ? 'Unclassified rows need an owner/repo name or a github.com URL before they can be classified.'
+            : 'No unclassified repositories are waiting.',
+          results: []
+        });
+        return;
+      }
+      var results = partition.ready.map(previewClassifyRow);
+      var summary = summarizeClassify_(results, partition.limit);
+      summary.skipped = partition.skipped;
+      ok(summary);
+    },
+    classifySelectedRepos: function (repos) {
+      var list = Array.isArray(repos) ? repos : [];
+      if (!list.length) {
+        ok({ ok: false, classified: 0, error: 'Select at least one repository.', results: [] });
+        return;
+      }
+      var results = [];
+      list.slice(0, clampBatchLimit_(list.length)).forEach(function (key) {
+        var row = null;
+        SAMPLE_ROWS.forEach(function (item) { if (item.repo === key) row = item; });
+        if (!row) results.push({ ok: false, repo: key, error: 'No inventory row matches that repository.' });
+        else results.push(previewClassifyRow(row));
+      });
+      ok(summarizeClassify_(results, clampBatchLimit_(list.length)));
+    },
+    classifyRepo: function (owner, name) {
+      var key = owner && name ? owner + '/' + name : (name || owner || '');
+      var row = null;
+      SAMPLE_ROWS.forEach(function (item) { if (item.repo === key) row = item; });
+      if (!row) { ok({ ok: false, repo: key, error: 'No inventory row matches that repository.' }); return; }
+      ok(publicClassifyResult_(previewClassifyRow(row)));
     },
     getWebAppUrl: function () { ok('https://script.google.com/macros/s/preview/exec'); }
   };

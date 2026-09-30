@@ -17,8 +17,9 @@ The live runtime is Google Apps Script. `clasp push` uploads the `.gs` and `.htm
 - **Priorities** shows Today & Priorities. Status can be changed by a signed-in editor.
 - **Deploy** shows Deploy Tracker.
 - **Webhooks** shows Webhook Log (created on first use) and whether the script properties are set.
+- **Classify** asks Gemini for a priority, tech stack, deploy hint, and short rationale. Editors run it from Overview or Inventory. With `AI_AUTO_CLASSIFY` set, a repository webhook or a default-branch push can classify a new or still-unclassified row.
 
-`doPost` accepts GitHub `push`, `repository`, `workflow_run`, `star`, and `ping`. It upserts Full Inventory by repository name and appends a log line.
+`doPost` accepts GitHub `push`, `repository`, `workflow_run`, `star`, and `ping`. It upserts Full Inventory by repository name and appends a log line. Auto-classify is off unless `AI_AUTO_CLASSIFY` is true, so a normal webhook does not call Gemini or the GitHub API.
 
 ## Files
 
@@ -27,6 +28,7 @@ The live runtime is Google Apps Script. `clasp push` uploads the `.gs` and `.htm
 | `appsscript.json` | Timezone `Asia/Calcutta`, V8, web app defaults |
 | `Main.gs` | Menu, `doGet`, `doPost`, spreadsheet id |
 | `Api.gs` | `getOverviewMetrics`, `getInventoryRows`, `getPriorities`, `getDeployRows`, `updatePriorityStatus`, `getWebhookHealth`, optional GitHub enrich |
+| `Ai.gs` | Gemini classify, batch classify, optional auto-classify, owner/org repo list |
 | `Webhook.gs` | Signature/token check, inventory upsert, Webhook Log |
 | `Index.html` | Material web app |
 | `Sidebar.html` | Sheet sidebar |
@@ -35,7 +37,7 @@ The live runtime is Google Apps Script. `clasp push` uploads the `.gs` and `.htm
 
 ## Architecture
 
-The web app and the webhook share one `/exec` deployment. Reads go through `SpreadsheetApp.getActive()` when the script is bound, otherwise `openById`. Inventory responses are cached in `CacheService` for three minutes, in chunks, and the cache is dropped after a webhook upsert or an enrich write. `doPost` holds a short script lock, updates one inventory row (or appends one), appends one log row, and returns JSON. It does not call the GitHub API. `GITHUB_TOKEN` is used only when an editor chooses **Refresh from GitHub**.
+The web app and the webhook share one `/exec` deployment. Reads go through `SpreadsheetApp.getActive()` when the script is bound, otherwise `openById`. Inventory responses are cached in `CacheService` for three minutes, in chunks, and the cache is dropped after a webhook upsert, an enrich write, or a classification write. `doPost` holds a short script lock, updates one inventory row (or appends one), appends one log row, and returns JSON. It calls Gemini only when `AI_AUTO_CLASSIFY` is true and the row is new or still unclassified. `GITHUB_TOKEN` is sent as `Authorization: Bearer` on GitHub API reads when the property is set. Without it, public requests continue and a rate-limit response tells you to set the property.
 
 Other existing tabs (`Incomplete Projects`, `NVIDIA & Google Cloud`, `Master Plan`, `KPI Dashboard`) are left alone. Today & Priorities and Deploy Tracker are read by detecting their header row. Only `Webhook Log` is created when it is missing.
 
@@ -78,8 +80,11 @@ If this upgrade replaces an older sidebar script, remove leftover files in the A
 | Property | Required | Purpose |
 | --- | --- | --- |
 | `GITHUB_WEBHOOK_SECRET` | Yes, for webhooks | Shared secret. Long random string. |
-| `GITHUB_TOKEN` | No | Classic or fine-grained PAT with metadata read. Powers **Refresh from GitHub** only. |
-| `CONTROL_TOWER_EDITORS` | No | Comma-separated emails allowed to change priority status and enrich. If empty, only the effective user (the account the script runs as in the sheet) can edit. |
+| `GITHUB_TOKEN` | No | Classic or fine-grained PAT with metadata read. Sent as a bearer token for repo metadata, languages, topics, README, and owner/org listing. Public requests still run when it is unset. |
+| `GEMINI_API_KEY` | No | Google AI Studio key used by Classify. The dashboard reports whether it is set and never shows the value. |
+| `GEMINI_MODEL` | No | Model id. Defaults to `gemini-3.8-flash`. |
+| `AI_AUTO_CLASSIFY` | No | Set to `true` to classify new or unclassified rows after a `repository` event or a push to the default branch. Leave unset to keep webhooks from calling Gemini. |
+| `CONTROL_TOWER_EDITORS` | No | Comma-separated emails allowed to change priority status, enrich, and classify. If empty, only the effective user (the account the script runs as in the sheet) can edit. |
 
 Anonymous visitors never pass the editor check, because Apps Script does not give them an email on an Anyone deployment.
 
@@ -121,7 +126,20 @@ Values that start with `=`, `+`, `-`, or `@` are prefixed with an apostrophe bef
 
 `updatePriorityStatus(repo, status, rowNumber)` writes the Status column on Today & Priorities. It refuses formula-like text. From the public web app this succeeds only when `Session.getActiveUser()` is the owner or an address in `CONTROL_TOWER_EDITORS`. The sheet sidebar runs as the person who opened the spreadsheet, so the owner can edit there.
 
-**Refresh from GitHub** uses `GITHUB_TOKEN` and the row’s `owner/repo` name or `github.com` URL. It can fill stars, description, visibility, topics, fork, README, and Has CI when Actions workflows exist. It does not invent a deploy status.
+**Refresh from GitHub** uses the row’s `owner/repo` name or `github.com` URL. It can fill stars, description, visibility, topics, fork, README, and Has CI when Actions workflows exist. It does not invent a deploy status. With `GITHUB_TOKEN` set, the request is authenticated. Without it, public repositories are read until GitHub’s unauthenticated rate limit, and the error tells you to add the token. Private repositories need the token.
+
+## Classify with Gemini
+
+1. In Apps Script, open **Project settings → Script properties**.
+2. Add `GEMINI_API_KEY` with the key from Google AI Studio. Optionally add `GITHUB_TOKEN` so classification can read private repos and avoid the public rate limit. Optionally set `GEMINI_MODEL` (default `gemini-3.8-flash`).
+3. Deploy or reload the web app. Overview and Inventory show two chips: Gemini configured or not, and GitHub token configured or not. The chips are booleans. The key and token are not sent to the browser.
+4. Sign in as an editor. **Classify next N unclassified** walks rows whose Priority is empty or not P1/P2/P3, up to 8 per run, with a pause between Gemini calls. **Classify selected** uses the checkboxes on Inventory. The details drawer has **Classify** for one repository.
+5. A successful run writes **Priority** and **Tech stack**. **Deploy status** is filled only when that cell is empty or already `Demo` or `None` (`Live`, `Deployed`, and `Failed` stay as they are). The GitHub **Description** is left unchanged. The rationale, deploy hint (`live`, `demo`, or `none`), and tags appear in the result panel and toast.
+6. If `GEMINI_API_KEY` is missing, Classify returns a clear error and the rest of the dashboard keeps loading.
+
+`listOwnerRepos(owner)` is available to editors from the script editor. It lists the user, then the organization if the user lookup is not found, and uses `GITHUB_TOKEN` when that property is set.
+
+Set `AI_AUTO_CLASSIFY` to `true` only if webhook deliveries should spend a Gemini call. It runs for `repository` events (except deleted or transferred) and for pushes to the repository default branch, and only when the inventory row was just inserted or its priority is still unclassified. The webhook still returns success when classification fails; the log detail says `classify skipped` plus the reason. Leave the property unset for the cheaper webhook path.
 
 ## Local preview and tests
 
@@ -138,4 +156,4 @@ Full Inventory header **row 4**:
 
 Repo, URL, Description, Visibility, Stars, Fork?, Topics, Has README, Has CI, Deploy status, Security alerts, Category, Tech stack, Production relevance score, Priority, Future plan.
 
-Data starts on **row 5**. Webhook Log headers, when this project creates the tab: Timestamp, Event, Repo, Action, Result, Detail.
+Data starts on **row 5**. Classify matches those headers by name (Priority, Tech stack, Deploy status) and does not rewrite rows 1–3. Webhook Log headers, when this project creates the tab: Timestamp, Event, Repo, Action, Result, Detail.

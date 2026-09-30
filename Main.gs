@@ -4,11 +4,15 @@
  * Bound to Yash GitHub Review Board.
  * Script properties (Project settings → Script properties):
  *   GITHUB_WEBHOOK_SECRET   required for doPost
- *   GITHUB_TOKEN            optional; enrichInventoryRepo reads GitHub
+ *   GITHUB_TOKEN            optional; GitHub API reads send it as a bearer token
+ *   GEMINI_API_KEY          optional; classifyRepo / classifyInventoryBatch
+ *   GEMINI_MODEL            optional; defaults to gemini-3.8-flash
+ *   AI_AUTO_CLASSIFY        optional; true classifies new or unclassified rows
+ *                           on repository events and default-branch pushes
  *   CONTROL_TOWER_EDITORS   optional comma-separated emails allowed to edit
  *
  * Anonymous web-app callers can read the dashboard and POST webhooks.
- * They cannot change priority status or call GitHub enrich.
+ * They cannot change priority status, enrich from GitHub, or run Classify.
  */
 
 var CT = {
@@ -114,6 +118,8 @@ function doPost(e) {
       outcome = { action: 'ping', result: 'pong', repo: '', detail: '' };
     } else {
       outcome = applyGithubWebhook_(eventName, payload);
+      var aiDetail = maybeAutoClassify_(eventName, payload, outcome);
+      if (aiDetail) outcome.detail = outcome.detail ? outcome.detail + '; ' + aiDetail : aiDetail;
     }
     appendWebhookLog_(eventName, outcome.repo, outcome.action, outcome.result, outcome.detail || '');
     if (outcome.result === 'updated' || outcome.result === 'inserted') invalidateCache_();
