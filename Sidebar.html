@@ -66,11 +66,11 @@
     }
     function load() {
       showError('');
-      document.getElementById('list').innerHTML = '<article class="card">Loading inventory\u2026</article>';
+      document.getElementById('list').innerHTML = '<article class="card">Loading inventory…</article>';
       google.script.run
         .withSuccessHandler(function (data) {
-          var score = data.avgScore == null ? '\u2014' : data.avgScore;
-          var ci = data.ciCoverage == null ? '\u2014' : data.ciCoverage + '%';
+          var score = data.avgScore == null ? '—' : data.avgScore;
+          var ci = data.ciCoverage == null ? '—' : data.ciCoverage + '%';
           document.getElementById('list').innerHTML =
             card('Repositories', data.total) +
             card('P1 / P2 / P3', data.p1 + ' / ' + data.p2 + ' / ' + data.p3) +

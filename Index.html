@@ -1,164 +1,709 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <base target="_top">
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>GitHub Control Tower</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230b57d0'/%3E%3Ccircle cx='16' cy='17' r='3' fill='%23f9ab00'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,500,0,0&display=swap" rel="stylesheet">
   <style>
     :root {
-      --md-sys-color-primary: #1a73e8;
-      --md-sys-color-on-primary: #fff;
-      --md-sys-color-surface: #f8f9fa;
-      --md-sys-color-on-surface: #202124;
-      --md-sys-color-outline: #e8eaed;
-      --md-sys-color-error: #c5221f;
-      --md-sys-color-secondary: #5f6368;
+      --bg: #f6f8fb;
+      --surface: #ffffff;
+      --ink: #1f1f1f;
+      --muted: #5f6368;
+      --line: #e3e6ea;
+      --primary: #0b57d0;
+      --primary-ink: #041e49;
+      --primary-container: #d3e3fd;
+      --ok: #0d652d;
+      --ok-bg: #e6f4ea;
+      --warn: #8a4b00;
+      --warn-bg: #fef7e0;
+      --bad: #b3261e;
+      --bad-bg: #fce8e6;
+      --info: #0b57d0;
+      --info-bg: #e8f0fe;
+      --shadow: 0 1px 2px rgba(60, 64, 67, 0.08);
+      --radius: 16px;
+      --nav: 232px;
+      --bar: 64px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #101418;
+        --surface: #1a1f26;
+        --ink: #e8eaed;
+        --muted: #bdc1c6;
+        --line: #3c4043;
+        --primary: #a8c7fa;
+        --primary-ink: #d3e3fd;
+        --primary-container: #1b3a66;
+        --ok: #81c995;
+        --ok-bg: #14301f;
+        --warn: #fdd663;
+        --warn-bg: #3d2e00;
+        --bad: #f2b8b5;
+        --bad-bg: #3f1513;
+        --info: #a8c7fa;
+        --info-bg: #1b3a66;
+        --shadow: none;
+      }
     }
     * { box-sizing: border-box; }
-    body { margin: 0; font-family: "Google Sans", Roboto, Arial, sans-serif; background: var(--md-sys-color-surface); color: var(--md-sys-color-on-surface); }
-    header.appbar { display: flex; align-items: center; gap: 12px; padding: 12px 20px; background: #fff; border-bottom: 1px solid var(--md-sys-color-outline); position: sticky; top: 0; z-index: 10; }
-    header h1 { font-size: 18px; margin: 0; font-weight: 600; }
-    nav { display: flex; gap: 4px; flex-wrap: wrap; margin-left: auto; }
-    nav button { border: 0; background: transparent; padding: 8px 12px; border-radius: 20px; cursor: pointer; color: var(--md-sys-color-secondary); font-weight: 500; }
-    nav button.active { background: #e8f0fe; color: var(--md-sys-color-primary); }
-    main { padding: 20px; max-width: 1200px; margin: 0 auto; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
-    .card { background: #fff; border: 1px solid var(--md-sys-color-outline); border-radius: 12px; padding: 14px; }
-    .card .label { font-size: 12px; color: var(--md-sys-color-secondary); }
-    .card .value { font-size: 24px; font-weight: 600; margin-top: 4px; }
-    .toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
-    input, select { padding: 8px 10px; border: 1px solid var(--md-sys-color-outline); border-radius: 8px; font: inherit; }
-    table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 12px; overflow: hidden; border: 1px solid var(--md-sys-color-outline); font-size: 13px; }
-    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--md-sys-color-outline); vertical-align: top; }
-    th { background: #f1f3f4; font-weight: 600; }
-    a { color: var(--md-sys-color-primary); text-decoration: none; }
-    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
-    .p1 { background: #fce8e6; color: #c5221f; } .p2 { background: #fef7e0; color: #e37400; } .p3 { background: #e8f0fe; color: #1a73e8; }
-    .err { color: var(--md-sys-color-error); margin: 8px 0; }
-    .meta { color: var(--md-sys-color-secondary); font-size: 12px; margin-bottom: 12px; }
-    .hidden { display: none; }
-    @media (max-width: 640px) { main { padding: 12px; } th:nth-child(n+4), td:nth-child(n+4) { display: none; } }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      font-family: Roboto, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      font-size: 14px;
+      line-height: 1.45;
+    }
+    button, input, select { font: inherit; color: inherit; }
+    button { cursor: pointer; }
+    a { color: var(--primary); }
+    .skip {
+      position: absolute; left: 12px; top: -40px; background: var(--primary); color: #fff;
+      padding: 8px 12px; border-radius: 8px; z-index: 5;
+    }
+    .skip:focus { top: 8px; }
+    .appbar {
+      position: sticky; top: 0; z-index: 4;
+      height: var(--bar);
+      display: flex; align-items: center; gap: 12px;
+      padding: 0 16px 0 12px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--line);
+    }
+    .mark {
+      width: 40px; height: 40px; border-radius: 12px;
+      background: #0b57d0; color: #fff;
+      display: grid; place-items: center; flex: none;
+    }
+    .mark svg { width: 22px; height: 22px; display: block; }
+    .titles { min-width: 0; }
+    .titles h1 { margin: 0; font-size: 18px; font-weight: 500; letter-spacing: 0; }
+    .titles p { margin: 0; color: var(--muted); font-size: 12px; }
+    .appbar .spacer { flex: 1; }
+    .icon-btn, .btn {
+      border: 1px solid var(--line);
+      background: var(--surface);
+      border-radius: 999px;
+      min-height: 36px;
+      padding: 0 14px;
+      display: inline-flex; align-items: center; gap: 6px;
+    }
+    .icon-btn { width: 40px; padding: 0; justify-content: center; }
+    .btn.primary { background: var(--primary); color: #fff; border-color: transparent; }
+    @media (prefers-color-scheme: dark) {
+      .btn.primary { color: #062e6f; }
+    }
+    .btn:disabled, .icon-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+    .shell { display: grid; grid-template-columns: var(--nav) 1fr; min-height: calc(100vh - var(--bar)); }
+    nav {
+      border-right: 1px solid var(--line);
+      padding: 12px;
+      background: var(--bg);
+    }
+    nav button {
+      width: 100%;
+      text-align: left;
+      border: 0;
+      background: transparent;
+      border-radius: 999px;
+      min-height: 44px;
+      padding: 0 14px;
+      display: flex; align-items: center; gap: 10px;
+      color: var(--ink);
+      margin-bottom: 4px;
+    }
+    nav button[aria-current="page"] {
+      background: var(--primary-container);
+      color: var(--primary-ink);
+      font-weight: 500;
+    }
+    main { padding: 20px 20px 40px; min-width: 0; }
+    .page-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-end; margin-bottom: 16px; }
+    .page-head h2 { margin: 0 0 4px; font-size: 22px; font-weight: 500; }
+    .page-head p { margin: 0; color: var(--muted); }
+    .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+    .card, .panel {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+    .card { padding: 16px; }
+    .card .label { color: var(--muted); font-size: 12px; font-weight: 500; letter-spacing: .02em; }
+    .card .value { font-size: 28px; font-weight: 500; margin-top: 6px; font-variant-numeric: tabular-nums; }
+    .card .hint { color: var(--muted); font-size: 12px; margin-top: 4px; }
+    .split { display: grid; grid-template-columns: 1.2fr .8fr; gap: 12px; margin-top: 12px; }
+    .panel { padding: 16px; }
+    .panel h3 { margin: 0 0 12px; font-size: 15px; font-weight: 500; }
+    .bar-row { display: grid; grid-template-columns: minmax(90px, 140px) 1fr auto; gap: 8px; align-items: center; margin: 8px 0; }
+    .bar-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .track { height: 8px; background: var(--bg); border-radius: 99px; overflow: hidden; }
+    .track i { display: block; height: 100%; background: var(--primary); border-radius: 99px; }
+    .meter { margin-top: 8px; }
+    .filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+    .filters input, .filters select {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      min-height: 40px;
+      padding: 0 12px;
+    }
+    .filters input { flex: 1 1 220px; }
+    .table-wrap { overflow: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+    table { width: 100%; border-collapse: collapse; min-width: 760px; }
+    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { font-size: 12px; color: var(--muted); font-weight: 500; position: sticky; top: 0; background: var(--surface); }
+    tr:last-child td { border-bottom: 0; }
+    tbody tr:hover td { background: color-mix(in srgb, var(--primary-container) 35%, transparent); }
+    .repo { font-weight: 500; }
+    .sub { color: var(--muted); font-size: 12px; margin-top: 2px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .pill {
+      display: inline-flex; align-items: center; min-height: 22px; padding: 0 8px;
+      border-radius: 99px; font-size: 12px; font-weight: 500; white-space: nowrap;
+      background: var(--bg); color: var(--muted);
+    }
+    .pill.p1 { background: var(--bad-bg); color: var(--bad); }
+    .pill.p2 { background: var(--warn-bg); color: var(--warn); }
+    .pill.p3 { background: var(--info-bg); color: var(--info); }
+    .pill.ok { background: var(--ok-bg); color: var(--ok); }
+    .pill.bad { background: var(--bad-bg); color: var(--bad); }
+    .linkish { background: none; border: 0; padding: 0; color: var(--primary); font-weight: 500; text-align: left; }
+    .notice, .banner {
+      border-radius: 12px; padding: 12px 14px; margin-bottom: 12px;
+      background: var(--info-bg); color: var(--ink);
+    }
+    .notice.error { background: var(--bad-bg); }
+    .banner { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+    .empty, .loading {
+      padding: 28px 16px; text-align: center; color: var(--muted);
+    }
+    .skel {
+      height: 88px; border-radius: var(--radius);
+      background: linear-gradient(90deg, var(--line), var(--surface), var(--line));
+      background-size: 200% 100%;
+      animation: shine 1.2s infinite;
+    }
+    @keyframes shine { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
+    @media (prefers-reduced-motion: reduce) { .skel { animation: none; } }
+    select.status { min-height: 32px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); padding: 0 8px; }
+    .drawer-back {
+      position: fixed; inset: 0; background: rgba(15, 23, 32, .42);
+      display: flex; justify-content: flex-end; z-index: 6;
+    }
+    .drawer {
+      width: min(420px, 100%); height: 100%; background: var(--surface);
+      padding: 20px; overflow: auto; box-shadow: var(--shadow);
+    }
+    .drawer h3 { margin: 8px 0; }
+    .meta { display: grid; gap: 8px; margin: 12px 0 16px; }
+    .meta div { display: grid; grid-template-columns: 110px 1fr; gap: 8px; }
+    .meta dt { color: var(--muted); }
+    .steps { margin: 0; padding-left: 18px; }
+    .steps li { margin: 6px 0; }
+    .count { color: var(--muted); font-size: 12px; align-self: center; }
+    .material-symbols-outlined { font-size: 20px; }
+    @media (max-width: 960px) {
+      .kpis, .split { grid-template-columns: 1fr 1fr; }
+      .shell { grid-template-columns: 1fr; }
+      nav {
+        display: flex; gap: 6px; overflow: auto; border-right: 0; border-bottom: 1px solid var(--line);
+        padding: 8px; position: sticky; top: var(--bar); z-index: 3;
+      }
+      nav button { width: auto; flex: none; margin: 0; }
+    }
+    @media (max-width: 640px) {
+      .kpis { grid-template-columns: 1fr 1fr; }
+      .split { grid-template-columns: 1fr; }
+      .titles p, .hide-sm { display: none; }
+      main { padding: 16px 12px 32px; }
+      .page-head { flex-direction: column; align-items: flex-start; }
+    }
   </style>
 </head>
 <body>
+  <a class="skip" href="#main">Skip to content</a>
   <header class="appbar">
-    <h1>GitHub Control Tower</h1>
-    <nav>
-      <button data-page="overview" class="active">Overview</button>
-      <button data-page="inventory">Inventory</button>
-      <button data-page="priorities">Priorities</button>
-      <button data-page="deploy">Deploy</button>
-      <button data-page="webhooks">Webhooks</button>
-    </nav>
+    <div class="mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none">
+        <path d="M12 3v3M8 20h8M9 6h6l1 4H8l1-4Z" stroke="white" stroke-width="1.8" stroke-linejoin="round"/>
+        <path d="M7 10h10v3a5 5 0 0 1-10 0v-3Z" stroke="white" stroke-width="1.8"/>
+        <circle cx="12" cy="12.5" r="1.2" fill="#f9ab00"/>
+      </svg>
+    </div>
+    <div class="titles">
+      <h1>GitHub Control Tower</h1>
+      <p>Yash GitHub Review Board</p>
+    </div>
+    <div class="spacer"></div>
+    <button class="btn" id="refresh" type="button">
+      <span class="material-symbols-outlined" aria-hidden="true">refresh</span>
+      Refresh
+    </button>
   </header>
-  <main>
-    <div class="meta" id="meta">Loading…</div>
-    <div id="err" class="err"></div>
-
-    <section id="page-overview">
-      <div class="grid" id="kpi"></div>
-    </section>
-
-    <section id="page-inventory" class="hidden">
-      <div class="toolbar">
-        <input id="q" placeholder="Search repos…" style="min-width:180px;flex:1">
-        <select id="pri"><option value="">Priority</option><option>P1</option><option>P2</option><option>P3</option></select>
-        <select id="dep"><option value="">Deploy</option><option value="deployed">deployed</option><option value="failure">failure</option><option value="partial">partial</option></select>
-        <button onclick="loadInventory()" style="background:var(--md-sys-color-primary);color:#fff;border:0;border-radius:8px;padding:8px 14px;cursor:pointer">Filter</button>
-      </div>
-      <div id="inv-wrap"></div>
-    </section>
-
-    <section id="page-priorities" class="hidden"><div id="pri-wrap"></div></section>
-    <section id="page-deploy" class="hidden"><div id="dep-wrap"></div></section>
-    <section id="page-webhooks" class="hidden"><div id="wh-wrap"></div></section>
-  </main>
+  <div id="preview-banner" class="banner" hidden></div>
+  <div class="shell">
+    <nav aria-label="Sections">
+      <button type="button" data-view="overview" aria-current="page"><span class="material-symbols-outlined" aria-hidden="true">dashboard</span>Overview</button>
+      <button type="button" data-view="inventory"><span class="material-symbols-outlined" aria-hidden="true">inventory_2</span>Inventory</button>
+      <button type="button" data-view="priorities"><span class="material-symbols-outlined" aria-hidden="true">flag</span>Priorities</button>
+      <button type="button" data-view="deploy"><span class="material-symbols-outlined" aria-hidden="true">rocket_launch</span>Deploy</button>
+      <button type="button" data-view="webhooks"><span class="material-symbols-outlined" aria-hidden="true">webhook</span>Webhooks</button>
+    </nav>
+    <main id="main" tabindex="-1">
+      <div id="notice" class="notice error" hidden></div>
+      <section id="view-overview" aria-live="polite"></section>
+      <section id="view-inventory" hidden></section>
+      <section id="view-priorities" hidden></section>
+      <section id="view-deploy" hidden></section>
+      <section id="view-webhooks" hidden></section>
+    </main>
+  </div>
+  <div id="drawer"></div>
+  <!--PREVIEW-->
   <script>
-    var initialPage = <?!= JSON.stringify(initialPage || "overview") ?>;
-    function showErr(m){ document.getElementById('err').textContent = m || ''; }
-    function setPage(name){
-      document.querySelectorAll('main > section').forEach(function(s){ s.classList.add('hidden'); });
-      document.getElementById('page-'+name).classList.remove('hidden');
-      document.querySelectorAll('nav button').forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-page')===name); });
-      if(name==='overview') loadOverview();
-      if(name==='inventory') loadInventory();
-      if(name==='priorities') loadPriorities();
-      if(name==='deploy') loadDeploy();
-      if(name==='webhooks') loadWebhooks();
-    }
-    document.querySelectorAll('nav button').forEach(function(b){
-      b.addEventListener('click', function(){ setPage(b.getAttribute('data-page')); });
-    });
-    function pill(p){ return '<span class="pill '+(String(p||'').toLowerCase())+'">'+(p||'')+'</span>'; }
-    function loadOverview(){
-      showErr('');
-      google.script.run.withSuccessHandler(function(m){
-        document.getElementById('meta').textContent = 'Updated '+m.generatedAt+' · '+m.total+' repos';
-        var items=[['Total',m.total],['P1',m.p1],['P2',m.p2],['P3',m.p3],['NVIDIA',m.nvidia],['GCP',m.gcp],['Deployed',m.deployed],['With CI',m.withCi],['Avg score',m.avgScore]];
-        document.getElementById('kpi').innerHTML = items.map(function(x){return '<div class="card"><div class="label">'+x[0]+'</div><div class="value">'+x[1]+'</div></div>';}).join('');
-      }).withFailureHandler(function(e){ showErr(e.message||e); }).getOverviewMetrics();
-    }
-    function loadInventory(){
-      showErr('');
-      var f={ q: document.getElementById('q').value, priority: document.getElementById('pri').value, deploy: document.getElementById('dep').value };
-      google.script.run.withSuccessHandler(function(res){
-        document.getElementById('meta').textContent = res.total+' matching repos (showing up to 500)';
-        var rows=res.rows||[];
-        var html='<table><thead><tr><th>Repo</th><th>Pri</th><th>Stars</th><th>Deploy</th><th>CI</th><th>Category</th></tr></thead><tbody>';
-        rows.forEach(function(r){
-          var url=r.URL||('#');
-          html+='<tr><td><a href="'+url+'" target="_blank" rel="noopener">'+(r.Repo||'')+'</a></td><td>'+pill(r.Priority)+'</td><td>'+(r.Stars||'')+'</td><td>'+(r['Deploy status']||'')+'</td><td>'+(r['Has CI']||'')+'</td><td>'+(r.Category||'')+'</td></tr>';
-        });
-        html+='</tbody></table>';
-        document.getElementById('inv-wrap').innerHTML=html;
-      }).withFailureHandler(function(e){ showErr(e.message||e); }).getInventoryRows(f);
-    }
-    function loadPriorities(){
-      google.script.run.withSuccessHandler(function(res){
-        var rows=res.rows||[];
-        var html='<table><thead><tr><th>Pri</th><th>Repo</th><th>Action</th><th>Status</th></tr></thead><tbody>';
-        rows.forEach(function(r){
-          html+='<tr><td>'+pill(r.Priority)+'</td><td>'+(r.Repo||'')+'</td><td>'+(r.Action||'')+'</td><td>';
-          if(res.canEdit){
-            html+='<select data-repo="'+String(r.Repo||'').replace(/"/g,'&quot;')+'" onchange="saveStatus(this)">';
-            ['Open','In progress','Partial — code merged','Done','Blocked'].forEach(function(s){
-              html+='<option'+(r.Status===s?' selected':'')+'>'+s+'</option>';
+    (function () {
+      var state = {
+        view: 'overview',
+        filters: { query: '', priority: '', deployStatus: '', category: '', hasCi: '' },
+        inventory: null,
+        priorities: null
+      };
+      var views = ['overview', 'inventory', 'priorities', 'deploy', 'webhooks'];
+      var notice = document.getElementById('notice');
+
+      function esc(value) {
+        return String(value == null ? '' : value)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      }
+
+      function call(name, args) {
+        return new Promise(function (resolve, reject) {
+          if (!window.google || !google.script || !google.script.run) {
+            reject(new Error('Open the deployed web app. This page runs inside Google Apps Script.'));
+            return;
+          }
+          var chain = google.script.run
+            .withSuccessHandler(resolve)
+            .withFailureHandler(function (err) {
+              reject(new Error(err && err.message ? err.message : 'Request failed'));
             });
-            html+='</select>';
-          } else html+=(r.Status||'');
-          html+='</td></tr>';
+          chain[name].apply(chain, args || []);
         });
-        html+='</tbody></table>';
-        document.getElementById('pri-wrap').innerHTML=html;
-      }).withFailureHandler(function(e){ showErr(e.message||e); }).getPriorities();
-    }
-    function saveStatus(el){
-      google.script.run.withSuccessHandler(function(){ showErr(''); }).withFailureHandler(function(e){ showErr(e.message||e); }).updatePriorityStatus(el.getAttribute('data-repo'), el.value);
-    }
-    function loadDeploy(){
-      google.script.run.withSuccessHandler(function(res){
-        var rows=res.rows||[];
-        var html='<table><thead><tr><th>Repo</th><th>Platform</th><th>Status</th><th>Live URL</th><th>CI</th></tr></thead><tbody>';
-        rows.forEach(function(r){
-          var u=r['Live URL']||'';
-          html+='<tr><td>'+(r.Repo||'')+'</td><td>'+(r.Platform||'')+'</td><td>'+(r['Deploy status']||'')+'</td><td>'+(u?'<a href="'+u+'" target="_blank" rel="noopener">link</a>':'')+'</td><td>'+(r.CI||'')+'</td></tr>';
+      }
+
+      function showNotice(message) {
+        if (!message) {
+          notice.hidden = true;
+          notice.textContent = '';
+          return;
+        }
+        notice.hidden = false;
+        notice.textContent = message;
+      }
+
+      function skeleton(n) {
+        var html = '<div class="kpis">';
+        for (var i = 0; i < n; i++) html += '<div class="skel"></div>';
+        return html + '</div>';
+      }
+
+      function pill(text) {
+        var raw = String(text || '');
+        var key = raw.toUpperCase().replace(/\s+/g, '');
+        var cls = 'pill';
+        if (key.indexOf('P1') === 0) cls += ' p1';
+        else if (key.indexOf('P2') === 0) cls += ' p2';
+        else if (key.indexOf('P3') === 0) cls += ' p3';
+        else if (/fail/i.test(raw)) cls += ' bad';
+        else if (/deployed|live|prod/i.test(raw)) cls += ' ok';
+        if (!raw) return '<span class="pill">—</span>';
+        return '<span class="' + cls + '">' + esc(raw) + '</span>';
+      }
+
+      function yesNo(value) {
+        var v = String(value || '').trim().toLowerCase();
+        var yes = v === 'yes' || v === 'y' || v === 'true' || v === '1' || v === '✓' || v === '✔';
+        if (!String(value || '').trim()) return '<span class="pill">—</span>';
+        return '<span class="pill ' + (yes ? 'ok' : '') + '">' + esc(value) + '</span>';
+      }
+
+      function showView(name) {
+        state.view = name;
+        views.forEach(function (view) {
+          document.getElementById('view-' + view).hidden = view !== name;
         });
-        html+='</tbody></table>';
-        document.getElementById('dep-wrap').innerHTML=html;
-      }).withFailureHandler(function(e){ showErr(e.message||e); }).getDeployRows();
-    }
-    function loadWebhooks(){
-      google.script.run.withSuccessHandler(function(h){
-        var html='<div class="card" style="margin-bottom:12px"><div class="label">Webhook secret configured</div><div class="value" style="font-size:16px">'+(h.secretSet?'Yes':'No — set GITHUB_WEBHOOK_SECRET')+'</div>';
-        if(h.webAppUrl) html+='<div class="meta" style="margin-top:8px">POST '+h.webAppUrl+'?token=YOUR_SECRET</div>';
-        html+='</div><table><thead><tr><th>When</th><th>Event</th><th>Repo</th><th>Action</th><th>Result</th></tr></thead><tbody>';
-        (h.events||[]).forEach(function(e){ html+='<tr><td>'+e.at+'</td><td>'+e.event+'</td><td>'+e.repo+'</td><td>'+e.action+'</td><td>'+e.result+'</td></tr>'; });
-        html+='</tbody></table>';
-        document.getElementById('wh-wrap').innerHTML=html;
-      }).withFailureHandler(function(e){ showErr(e.message||e); }).getWebhookHealth();
-    }
-    setPage(initialPage || 'overview');
+        document.querySelectorAll('nav button').forEach(function (button) {
+          if (button.getAttribute('data-view') === name) button.setAttribute('aria-current', 'page');
+          else button.removeAttribute('aria-current');
+        });
+        showNotice('');
+        if (name === 'overview') loadOverview(false);
+        if (name === 'inventory') loadInventory(false);
+        if (name === 'priorities') loadPriorities();
+        if (name === 'deploy') loadDeploy();
+        if (name === 'webhooks') loadWebhooks();
+      }
+
+      function loadOverview(force) {
+        var root = document.getElementById('view-overview');
+        root.innerHTML = '<div class="page-head"><div><h2>Overview</h2><p>Inventory KPIs from Full Inventory. Rows 1–3 of that sheet are the banner and are not counted.</p></div></div>' + skeleton(8);
+        call('getOverviewMetrics', [!!force]).then(function (data) {
+          if (state.view !== 'overview') return;
+          renderOverview(data);
+        }).catch(function (err) {
+          root.innerHTML = '';
+          showNotice(err.message);
+        });
+      }
+
+      function renderOverview(data) {
+        var cards = [
+          ['Repositories', data.total, 'Rows with a repo name'],
+          ['P1', data.p1, 'Priority bucket'],
+          ['P2', data.p2, 'Priority bucket'],
+          ['P3', data.p3, 'Priority bucket'],
+          ['NVIDIA', data.nvidia, 'Category, stack, topics, or name'],
+          ['Google Cloud', data.gcp, 'GCP, GKE, Cloud Run, BigQuery, Vertex'],
+          ['Deployed', data.deployed, 'Deploy status reads as live'],
+          ['Avg score', data.avgScore == null ? '—' : data.avgScore, data.scoredCount + ' scored rows']
+        ];
+        var html = '<div class="page-head"><div><h2>Overview</h2><p>Updated ' + esc(data.generatedAt || '') + ' · Asia/Calcutta' +
+          (data.otherPriority ? ' · ' + esc(data.otherPriority) + ' rows outside P1–P3' : '') +
+          '</p></div></div><div class="kpis">';
+        cards.forEach(function (card) {
+          html += '<article class="card"><div class="label">' + esc(card[0]) + '</div><div class="value">' + esc(card[1]) + '</div><div class="hint">' + esc(card[2]) + '</div></article>';
+        });
+        html += '</div><div class="split"><section class="panel"><h3>CI coverage</h3>';
+        var coverage = data.ciCoverage == null ? 0 : data.ciCoverage;
+        html += '<div class="value" style="font-size:28px;font-weight:500">' + esc(data.ciCoverage == null ? '—' : data.ciCoverage + '%') + '</div>';
+        html += '<p class="hint" style="color:var(--muted)">' + esc(data.ciYes) + ' of ' + esc(data.total) + ' rows have CI.</p>';
+        html += '<div class="track meter"><i style="width:' + Math.max(0, Math.min(100, coverage)) + '%"></i></div>';
+        html += '</section><section class="panel"><h3>Deploy status</h3>' + bars(data.deployMix, data.total) + '</section></div>';
+        html += '<section class="panel" style="margin-top:12px"><h3>Categories</h3>' + bars(data.categories, data.total) + '</section>';
+        document.getElementById('view-overview').innerHTML = html;
+      }
+
+      function bars(items, total) {
+        if (!items || !items.length) return '<div class="empty">No rows yet.</div>';
+        return items.map(function (item) {
+          var width = total ? Math.round((item.count / total) * 100) : 0;
+          return '<div class="bar-row"><span>' + esc(item.name) + '</span><div class="track"><i style="width:' + width + '%"></i></div><strong>' + esc(item.count) + '</strong></div>';
+        }).join('');
+      }
+
+      var inventoryReq = 0;
+
+      function loadInventory(force) {
+        var root = document.getElementById('view-inventory');
+        var req = ++inventoryReq;
+        var restoreSearch = !!(document.activeElement && document.activeElement.id === 'q');
+        if (!state.inventory) root.innerHTML = skeleton(4);
+        var payload = {
+          query: state.filters.query,
+          priority: state.filters.priority,
+          deployStatus: state.filters.deployStatus,
+          category: state.filters.category,
+          hasCi: state.filters.hasCi,
+          force: !!force
+        };
+        call('getInventoryRows', [payload]).then(function (data) {
+          if (req !== inventoryReq || state.view !== 'inventory') return;
+          state.inventory = data;
+          renderInventory(restoreSearch);
+        }).catch(function (err) {
+          if (req !== inventoryReq) return;
+          root.innerHTML = '';
+          showNotice(err.message);
+        });
+      }
+
+      function renderInventory(restoreSearch) {
+        var data = state.inventory;
+        var options = data.options || { priorities: [], deployStatuses: [], categories: [] };
+        var html = '<div class="page-head"><div><h2>Inventory</h2><p>' + esc(data.matched) + ' of ' + esc(data.total) + ' repositories. Select a name to open GitHub.</p></div></div>';
+        html += '<div class="filters">';
+        html += '<input id="q" type="search" placeholder="Search repo, stack, topics" value="' + esc(state.filters.query) + '" aria-label="Search inventory">';
+        html += selectHtml('priority', 'Priority', [['', 'All priorities']].concat(options.priorities.map(function (item) { return [item, item === 'OTHER' ? 'Other' : item]; })), state.filters.priority);
+        html += selectHtml('deployStatus', 'Deploy status', [['', 'All deploy statuses']].concat(options.deployStatuses.map(function (item) { return [item, item]; })), state.filters.deployStatus);
+        html += selectHtml('category', 'Category', [['', 'All categories']].concat(options.categories.map(function (item) { return [item, item]; })), state.filters.category);
+        html += selectHtml('hasCi', 'CI', [['', 'CI: any'], ['yes', 'CI: yes'], ['no', 'CI: no']], state.filters.hasCi);
+        html += '</div>';
+        if (!data.rows.length) {
+          html += '<div class="panel empty">No repositories match these filters.</div>';
+        } else {
+          html += '<div class="table-wrap"><table><thead><tr><th>Repo</th><th>Priority</th><th>Score</th><th>Stars</th><th>CI</th><th>Deploy</th><th>Category</th><th></th></tr></thead><tbody>';
+          data.rows.forEach(function (row, index) {
+            html += '<tr><td><button type="button" class="linkish" data-open="' + index + '">' + esc(row.repo) + '</button>';
+            if (row.description) html += '<div class="sub">' + esc(row.description) + '</div>';
+            if (row.stack) html += '<div class="sub">' + esc(row.stack) + '</div>';
+            html += '</td><td>' + pill(row.priority) + '</td><td>' + esc(row.score === '' ? '—' : row.score) + '</td><td>' + esc(row.stars === '' ? '—' : row.stars) + '</td><td>' + yesNo(row.hasCi) + '</td><td>' + pill(row.deployStatus) + '</td><td>' + esc(row.category || '—') + '</td>';
+            html += '<td><button type="button" class="btn" data-details="' + index + '">Details</button></td></tr>';
+          });
+          html += '</tbody></table></div>';
+        }
+        document.getElementById('view-inventory').innerHTML = html;
+        var search = document.getElementById('q');
+        var timer = null;
+        if (restoreSearch) {
+          search.focus();
+          var end = search.value.length;
+          search.setSelectionRange(end, end);
+        }
+        search.addEventListener('input', function () {
+          state.filters.query = search.value;
+          clearTimeout(timer);
+          timer = setTimeout(function () { loadInventory(false); }, 220);
+        });
+        document.querySelectorAll('#view-inventory select').forEach(function (select) {
+          select.addEventListener('change', function () {
+            state.filters[select.name] = select.value;
+            loadInventory(false);
+          });
+        });
+      }
+
+      function selectHtml(name, label, pairs, current) {
+        var html = '<select name="' + esc(name) + '" aria-label="' + esc(label) + '">';
+        pairs.forEach(function (pair) {
+          html += '<option value="' + esc(pair[0]) + '"' + (String(pair[0]) === String(current) ? ' selected' : '') + '>' + esc(pair[1]) + '</option>';
+        });
+        return html + '</select>';
+      }
+
+      function openRepo(row) {
+        if (row.url) window.open(row.url, '_blank', 'noopener');
+        else showNotice('This inventory row has no http(s) GitHub URL.');
+      }
+
+      function openDetails(index) {
+        var row = state.inventory.rows[index];
+        var fields = [
+          ['Visibility', row.visibility],
+          ['Fork', row.fork],
+          ['Topics', row.topics],
+          ['README', row.hasReadme],
+          ['Security', row.security],
+          ['Stack', row.stack],
+          ['Future plan', row.plan]
+        ];
+        var html = '<div class="drawer-back" role="presentation"><aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title">';
+        html += '<button type="button" class="btn" id="close-drawer">Close</button>';
+        html += '<h3 id="drawer-title">' + esc(row.repo) + '</h3>';
+        html += '<p>' + esc(row.description || 'No description on this row.') + '</p><dl class="meta">';
+        fields.forEach(function (field) {
+          html += '<div><dt>' + esc(field[0]) + '</dt><dd>' + esc(field[1] || '—') + '</dd></div>';
+        });
+        html += '</dl><div class="filters">';
+        html += '<button type="button" class="btn primary" id="open-github">Open GitHub</button>';
+        if (state.inventory.editable) html += '<button type="button" class="btn" id="enrich">Refresh from GitHub</button>';
+        else html += '<p class="hint" style="color:var(--muted)">GitHub refresh is available when you are signed in as an editor. Anonymous visitors can view only.</p>';
+        html += '</div></aside></div>';
+        var host = document.getElementById('drawer');
+        host.innerHTML = html;
+        document.getElementById('close-drawer').onclick = function () { host.innerHTML = ''; };
+        host.querySelector('.drawer-back').addEventListener('click', function (event) {
+          if (event.target === event.currentTarget) host.innerHTML = '';
+        });
+        document.getElementById('open-github').onclick = function () { openRepo(row); };
+        var enrich = document.getElementById('enrich');
+        if (enrich) {
+          enrich.onclick = function () {
+            enrich.disabled = true;
+            enrich.textContent = 'Refreshing…';
+            call('enrichInventoryRepo', [row.repo]).then(function () {
+              host.innerHTML = '';
+              loadInventory(true);
+            }).catch(function (err) {
+              enrich.disabled = false;
+              enrich.textContent = 'Refresh from GitHub';
+              showNotice(err.message);
+            });
+          };
+        }
+      }
+
+      function loadPriorities() {
+        var root = document.getElementById('view-priorities');
+        root.innerHTML = skeleton(3);
+        call('getPriorities').then(function (data) {
+          state.priorities = data;
+          if (state.view !== 'priorities') return;
+          renderPriorities();
+        }).catch(function (err) {
+          root.innerHTML = '';
+          showNotice(err.message);
+        });
+      }
+
+      function renderPriorities() {
+        var data = state.priorities;
+        var html = '<div class="page-head"><div><h2>Today & Priorities</h2><p>' + esc(data.sheetName) + (data.editable ? ' · status can be updated from this account.' : ' · view only for this visit.') + '</p></div></div>';
+        if (data.missing) {
+          html += '<div class="panel empty">' + esc(data.message) + '</div>';
+          document.getElementById('view-priorities').innerHTML = html;
+          return;
+        }
+        if (!data.editable) {
+          html += '<div class="notice">Status edits need a signed-in editor. Use the sheet sidebar as the owner, or set CONTROL_TOWER_EDITORS. Anyone-access webhooks stay read-only here.</div>';
+        }
+        if (!data.rows.length) {
+          html += '<div class="panel empty">No priority rows under the header.</div>';
+        } else {
+          html += boardTable(data, true);
+        }
+        document.getElementById('view-priorities').innerHTML = html;
+      }
+
+      function loadDeploy() {
+        var root = document.getElementById('view-deploy');
+        root.innerHTML = skeleton(3);
+        call('getDeployRows').then(function (data) {
+          if (state.view !== 'deploy') return;
+          var html = '<div class="page-head"><div><h2>Deploy tracker</h2><p>' + esc(data.sheetName) + '</p></div></div>';
+          if (data.missing) html += '<div class="panel empty">' + esc(data.message) + '</div>';
+          else if (!data.rows.length) html += '<div class="panel empty">Deploy Tracker has a header and no data rows yet.</div>';
+          else html += boardTable(data, false);
+          root.innerHTML = html;
+        }).catch(function (err) {
+          root.innerHTML = '';
+          showNotice(err.message);
+        });
+      }
+
+      function boardTable(data, withStatus) {
+        var statuses = {};
+        data.rows.forEach(function (row) { if (row.status) statuses[row.status] = 1; });
+        ['Not started', 'In progress', 'Blocked', 'Done'].forEach(function (item) { statuses[item] = 1; });
+        var choices = Object.keys(statuses).sort();
+        var html = '<div class="table-wrap"><table><thead><tr>';
+        data.headers.forEach(function (header) { html += '<th>' + esc(header || '—') + '</th>'; });
+        html += '</tr></thead><tbody>';
+        data.rows.forEach(function (row) {
+          html += '<tr>';
+          row.values.forEach(function (value, index) {
+            html += '<td>';
+            if (withStatus && index === data.columns.status) {
+              if (data.editable && row.repo) {
+                html += '<select class="status" data-repo="' + esc(row.repo) + '" data-row="' + esc(row.rowNumber) + '" data-prev="' + esc(row.status) + '" aria-label="Status for ' + esc(row.repo) + '">';
+                html += '<option value=""' + (row.status ? '' : ' selected') + '>—</option>';
+                if (row.status && choices.indexOf(row.status) === -1) html += '<option value="' + esc(row.status) + '" selected>' + esc(row.status) + '</option>';
+                choices.forEach(function (choice) {
+                  html += '<option value="' + esc(choice) + '"' + (choice === row.status ? ' selected' : '') + '>' + esc(choice) + '</option>';
+                });
+                html += '</select>';
+              } else html += pill(value);
+            } else if (/^https?:\/\//i.test(String(value || ''))) {
+              html += '<a href="' + esc(value) + '" target="_blank" rel="noopener">' + esc(value) + '</a>';
+            } else html += esc(value === '' ? '—' : value);
+            html += '</td>';
+          });
+          html += '</tr>';
+        });
+        return html + '</tbody></table></div>';
+      }
+
+      function loadWebhooks() {
+        var root = document.getElementById('view-webhooks');
+        root.innerHTML = skeleton(3);
+        call('getWebhookHealth').then(function (data) {
+          if (state.view !== 'webhooks') return;
+          renderWebhooks(data);
+        }).catch(function (err) {
+          root.innerHTML = '';
+          showNotice(err.message);
+        });
+      }
+
+      function renderWebhooks(data) {
+        var html = '<div class="page-head"><div><h2>Webhooks</h2><p>Recent rows from ' + esc(data.logSheet) + '.</p></div></div>';
+        html += '<div class="kpis">';
+        html += healthCard('Webhook secret', data.secretConfigured ? 'Set' : 'Missing', data.secretConfigured ? 'doPost can authorize' : 'Set GITHUB_WEBHOOK_SECRET');
+        html += healthCard('GitHub token', data.tokenConfigured ? 'Set' : 'Optional', 'Used only by Refresh from GitHub');
+        html += healthCard('Last event', data.lastEvent ? data.lastEvent.event : 'None', data.lastEvent ? data.lastEvent.timestamp : 'Waiting for the first delivery');
+        html += healthCard('Logged just now', data.events.length, 'Newest ' + data.events.length + ' rows');
+        html += '</div>';
+        html += '<section class="panel" style="margin-top:12px"><h3>Setup</h3><ol class="steps">';
+        html += '<li>Deploy → Web app → Execute as me → Who has access: <b>Anyone</b>. GitHub cannot pass a Google login.</li>';
+        html += '<li>Payload URL is the <code>/exec</code> URL, not <code>/dev</code>' + (data.webAppUrl ? ': <a href="' + esc(data.webAppUrl) + '" target="_blank" rel="noopener">' + esc(data.webAppUrl) + '</a>' : '. Deploy once, then refresh to see it.') + '</li>';
+        html += '<li>Add <code>?token=</code> with the same value as <code>GITHUB_WEBHOOK_SECRET</code>. Apps Script does not receive <code>X-Hub-Signature-256</code>; the script still checks that header if something in front forwards it.</li>';
+        html += '<li>Content type <code>application/json</code>. Events: push, repository, workflow runs, star. GitHub sends ping on save.</li>';
+        html += '</ol><p>' + esc(data.headerNote || '') + '</p></section>';
+        if (!data.events.length) {
+          html += '<div class="panel empty" style="margin-top:12px">No webhook deliveries in the log yet.</div>';
+        } else {
+          html += '<div class="table-wrap" style="margin-top:12px"><table><thead><tr><th>When</th><th>Event</th><th>Repo</th><th>Action</th><th>Result</th><th>Detail</th></tr></thead><tbody>';
+          data.events.forEach(function (event) {
+            html += '<tr><td>' + esc(event.timestamp) + '</td><td>' + esc(event.event) + '</td><td>' + esc(event.repo) + '</td><td>' + esc(event.action) + '</td><td>' + pill(event.result) + '</td><td>' + esc(event.detail) + '</td></tr>';
+          });
+          html += '</tbody></table></div>';
+        }
+        document.getElementById('view-webhooks').innerHTML = html;
+      }
+
+      function healthCard(label, value, hint) {
+        return '<article class="card"><div class="label">' + esc(label) + '</div><div class="value" style="font-size:22px">' + esc(value) + '</div><div class="hint">' + esc(hint) + '</div></article>';
+      }
+
+      document.querySelector('nav').addEventListener('click', function (event) {
+        var button = event.target.closest('button');
+        if (!button) return;
+        showView(button.getAttribute('data-view'));
+      });
+
+      document.getElementById('view-inventory').addEventListener('click', function (event) {
+        var open = event.target.closest('[data-open]');
+        var details = event.target.closest('[data-details]');
+        if (open) openRepo(state.inventory.rows[Number(open.getAttribute('data-open'))]);
+        if (details) openDetails(Number(details.getAttribute('data-details')));
+      });
+
+      document.getElementById('view-priorities').addEventListener('change', function (event) {
+        var select = event.target.closest('select.status');
+        if (!select) return;
+        var previous = select.getAttribute('data-prev') || '';
+        if (!select.value) {
+          select.value = previous;
+          return;
+        }
+        select.disabled = true;
+        call('updatePriorityStatus', [select.getAttribute('data-repo'), select.value, Number(select.getAttribute('data-row'))]).then(function () {
+          select.disabled = false;
+          select.setAttribute('data-prev', select.value);
+        }).catch(function (err) {
+          select.disabled = false;
+          select.value = previous;
+          showNotice(err.message);
+        });
+      });
+
+      document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape') document.getElementById('drawer').innerHTML = '';
+      });
+
+      document.getElementById('refresh').addEventListener('click', function () {
+        if (state.view === 'overview') loadOverview(true);
+        else if (state.view === 'inventory') loadInventory(true);
+        else showView(state.view);
+      });
+
+      if (window.__CT_PREVIEW__) {
+        var banner = document.getElementById('preview-banner');
+        banner.hidden = false;
+        banner.innerHTML = '<span>Preview mode uses sample rows so the layout can be reviewed here. The live app reads Yash GitHub Review Board.</span>';
+      }
+
+      showView('overview');
+    })();
   </script>
 </body>
 </html>
