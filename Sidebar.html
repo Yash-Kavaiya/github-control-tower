@@ -1,21 +1,104 @@
 <!DOCTYPE html>
-<html><head><base target="_top"><style>
-body{font-family:Google Sans,Roboto,Arial,sans-serif;margin:12px;color:#202124}
-.card{background:#f8f9fa;border:1px solid #e8eaed;border-radius:8px;padding:10px;margin-bottom:8px}
-.label{font-size:11px;color:#5f6368}.value{font-size:20px;font-weight:600}
-button{width:100%;padding:8px;border:0;border-radius:6px;background:#1a73e8;color:#fff;font-weight:600;cursor:pointer;margin-top:8px}
-</style></head><body>
-<h3 style="margin:0 0 8px">Control Tower</h3>
-<div id="m"></div>
-<button onclick="load()">Refresh</button>
-<script>
-function load(){
-  google.script.run.withSuccessHandler(function(x){
-    document.getElementById('m').innerHTML=
-      [['Total',x.total],['P1',x.p1],['P2',x.p2],['P3',x.p3],['Deployed',x.deployed],['Avg',x.avgScore]]
-      .map(function(r){return '<div class="card"><div class="label">'+r[0]+'</div><div class="value">'+r[1]+'</div></div>';}).join('');
-  }).getOverviewMetrics();
-}
-load();
-</script>
-</body></html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230b57d0'/%3E%3C/svg%3E">
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root { color-scheme: light; }
+    body {
+      margin: 0;
+      font-family: Roboto, Arial, sans-serif;
+      color: #1f1f1f;
+      background: #f6f8fb;
+    }
+    header { padding: 16px 16px 8px; }
+    h1 { font-size: 18px; font-weight: 500; margin: 0; }
+    p { margin: 4px 0 0; color: #5f6368; font-size: 12px; line-height: 1.4; }
+    .list { padding: 8px 12px 12px; display: grid; gap: 8px; }
+    .card {
+      background: #fff;
+      border: 1px solid #e3e6ea;
+      border-radius: 12px;
+      padding: 10px 12px;
+    }
+    .label { color: #5f6368; font-size: 11px; font-weight: 500; }
+    .value { font-size: 22px; font-weight: 500; font-variant-numeric: tabular-nums; }
+    button, a.btn {
+      display: block;
+      width: calc(100% - 24px);
+      margin: 0 12px 8px;
+      text-align: center;
+      text-decoration: none;
+      background: #0b57d0;
+      color: #fff;
+      border: 0;
+      border-radius: 999px;
+      min-height: 36px;
+      line-height: 36px;
+      font-weight: 500;
+    }
+    button.secondary { background: #fff; color: #0b57d0; border: 1px solid #d3e3fd; }
+    .note { padding: 4px 16px 16px; color: #5f6368; font-size: 12px; }
+    .error { margin: 8px 12px; background: #fce8e6; border-radius: 12px; padding: 10px 12px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Control Tower</h1>
+    <p>Snapshot from Full Inventory. The full Material app is the deployed web app.</p>
+  </header>
+  <div id="error" class="error" hidden></div>
+  <div id="list" class="list"></div>
+  <a class="btn" id="open" hidden target="_blank" rel="noopener">Open web app</a>
+  <button class="secondary" id="retry" type="button">Refresh KPIs</button>
+  <p class="note" id="note">Status changes from this sidebar run as you. Anonymous visitors to the public web app can view and send webhooks, and cannot edit.</p>
+  <script>
+    var note = document.getElementById('note');
+    function showError(message) {
+      var box = document.getElementById('error');
+      box.hidden = !message;
+      box.textContent = message || '';
+    }
+    function card(label, value) {
+      return '<article class="card"><div class="label">' + label + '</div><div class="value">' + value + '</div></article>';
+    }
+    function load() {
+      showError('');
+      document.getElementById('list').innerHTML = '<article class="card">Loading inventory\u2026</article>';
+      google.script.run
+        .withSuccessHandler(function (data) {
+          var score = data.avgScore == null ? '\u2014' : data.avgScore;
+          var ci = data.ciCoverage == null ? '\u2014' : data.ciCoverage + '%';
+          document.getElementById('list').innerHTML =
+            card('Repositories', data.total) +
+            card('P1 / P2 / P3', data.p1 + ' / ' + data.p2 + ' / ' + data.p3) +
+            card('NVIDIA / GCP', data.nvidia + ' / ' + data.gcp) +
+            card('Deployed', data.deployed) +
+            card('Average score', score) +
+            card('CI coverage', ci);
+          note.textContent = 'Updated ' + (data.generatedAt || '') + ' Asia/Calcutta. ' +
+            (data.editable ? 'This account can edit priority status.' : 'This visit is view only.');
+        })
+        .withFailureHandler(function (err) {
+          document.getElementById('list').innerHTML = '';
+          showError(err && err.message ? err.message : 'Could not read the inventory.');
+        })
+        .getOverviewMetrics(true);
+      google.script.run
+        .withSuccessHandler(function (url) {
+          var link = document.getElementById('open');
+          if (url) {
+            link.href = url;
+            link.hidden = false;
+          }
+        })
+        .withFailureHandler(function () {})
+        .getWebAppUrl();
+    }
+    document.getElementById('retry').onclick = load;
+    load();
+  </script>
+</body>
+</html>
