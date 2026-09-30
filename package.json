@@ -1,7 +1,7 @@
 {
   "name": "github-control-tower",
   "private": true,
-  "type": "module",
+  "description": "Clasp project for GitHub Control Tower. The production runtime is Google Apps Script bound to Yash GitHub Review Board.",
   "scripts": {
     "test": "node --test tests/logic.test.mjs",
     "preview": "node preview/server.mjs"

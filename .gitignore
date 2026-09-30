@@ -1,4 +1,4 @@
 .clasp.json
+.clasprc.json
+.netlify
 node_modules/
-.DS_Store
-*.log

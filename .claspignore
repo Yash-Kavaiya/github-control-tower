@@ -1,5 +1,9 @@
-**/**
-!appsscript.json
-!**/*.gs
-!**/*.html
-!appsscript.json
+README.md
+package.json
+preview/**
+tests/**
+**/.git/**
+node_modules/**
+.clasp.json.example
+.gitignore
+.clasprc.json
