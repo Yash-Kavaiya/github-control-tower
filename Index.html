@@ -208,6 +208,22 @@
     .steps { margin: 0; padding-left: 18px; }
     .steps li { margin: 6px 0; }
     .count { color: var(--muted); font-size: 12px; align-self: center; }
+    .ai-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .ai-bar input[type="number"] {
+      width: 72px; min-height: 36px; border-radius: 12px; border: 1px solid var(--line);
+      background: var(--surface); padding: 0 10px;
+    }
+    .ai-result { margin-top: 12px; }
+    .ai-result p { margin: 8px 0 0; }
+    .check { width: 18px; height: 18px; }
+    .toast {
+      position: fixed; right: 16px; bottom: 16px; z-index: 8;
+      width: min(420px, calc(100% - 32px));
+      background: var(--surface); color: var(--ink);
+      border: 1px solid var(--line); border-radius: 16px;
+      box-shadow: var(--shadow); padding: 14px 16px;
+    }
+    .toast .sub { margin-top: 6px; }
     .material-symbols-outlined { font-size: 20px; }
     @media (max-width: 960px) {
       .kpis, .split { grid-template-columns: 1fr 1fr; }
@@ -266,6 +282,7 @@
     </main>
   </div>
   <div id="drawer"></div>
+  <div id="toast" class="toast" hidden></div>
   <!--PREVIEW-->
   <script>
     (function () {
@@ -273,7 +290,11 @@
         view: 'overview',
         filters: { query: '', priority: '', deployStatus: '', category: '', hasCi: '' },
         inventory: null,
-        priorities: null
+        priorities: null,
+        selected: {},
+        aiStatus: null,
+        lastClass: null,
+        aiBusy: false
       };
       var views = ['overview', 'inventory', 'priorities', 'deploy', 'webhooks'];
       var notice = document.getElementById('notice');
@@ -354,12 +375,28 @@
         if (name === 'webhooks') loadWebhooks();
       }
 
+      function loadAiStatus() {
+        return call('getAiStatus').then(function (status) {
+          state.aiStatus = status;
+          return status;
+        }).catch(function () {
+          state.aiStatus = state.aiStatus || {
+            geminiConfigured: false,
+            githubTokenConfigured: false,
+            autoClassify: false,
+            model: '',
+            editable: false
+          };
+          return state.aiStatus;
+        });
+      }
+
       function loadOverview(force) {
         var root = document.getElementById('view-overview');
         root.innerHTML = '<div class="page-head"><div><h2>Overview</h2><p>Inventory KPIs from Full Inventory. Rows 1–3 of that sheet are the banner and are not counted.</p></div></div>' + skeleton(8);
-        call('getOverviewMetrics', [!!force]).then(function (data) {
+        Promise.all([call('getOverviewMetrics', [!!force]), loadAiStatus()]).then(function (pair) {
           if (state.view !== 'overview') return;
-          renderOverview(data);
+          renderOverview(pair[0]);
         }).catch(function (err) {
           root.innerHTML = '';
           showNotice(err.message);
@@ -390,7 +427,114 @@
         html += '<div class="track meter"><i style="width:' + Math.max(0, Math.min(100, coverage)) + '%"></i></div>';
         html += '</section><section class="panel"><h3>Deploy status</h3>' + bars(data.deployMix, data.total) + '</section></div>';
         html += '<section class="panel" style="margin-top:12px"><h3>Categories</h3>' + bars(data.categories, data.total) + '</section>';
+        html += aiPanelHtml('Classify from here, or select rows on Inventory.');
         document.getElementById('view-overview').innerHTML = html;
+      }
+
+      function configChip(on, onLabel, offLabel) {
+        return '<span class="pill ' + (on ? 'ok' : 'bad') + '">' + esc(on ? onLabel : offLabel) + '</span>';
+      }
+
+      function aiPanelHtml(hint) {
+        var status = state.aiStatus || {};
+        var selectedCount = Object.keys(state.selected).length;
+        var html = '<section class="panel" style="margin-top:12px"><h3>AI classification</h3>';
+        html += '<div class="ai-bar">';
+        html += configChip(!!status.geminiConfigured, 'Gemini configured', 'Gemini not set');
+        html += configChip(!!status.githubTokenConfigured, 'GitHub token configured', 'GitHub token not set');
+        if (status.autoClassify) html += '<span class="pill ok">Auto-classify on</span>';
+        html += '</div>';
+        html += '<p class="hint" style="color:var(--muted);margin:10px 0">' + esc(hint) + (status.model ? ' Model ' + esc(status.model) + '.' : '') + '</p>';
+        html += '<div class="ai-bar">';
+        html += '<label>Next <input class="ai-limit" type="number" min="1" max="8" value="5" aria-label="How many unclassified repositories to classify"> unclassified</label>';
+        html += '<button type="button" class="btn primary" data-ai="batch"' + (state.aiBusy || status.editable === false ? ' disabled' : '') + '>Classify next N unclassified</button>';
+        html += '<button type="button" class="btn" data-ai="selected"' + (state.aiBusy || status.editable === false ? ' disabled' : '') + '>Classify selected (' + esc(selectedCount) + ')</button>';
+        html += '</div>';
+        if (status.editable === false) html += '<p class="hint" style="color:var(--muted)">Classify runs only for a signed-in editor. Anonymous visitors can view the dashboard.</p>';
+        html += aiResultHtml();
+        html += '</section>';
+        return html;
+      }
+
+      function aiResultHtml() {
+        var last = state.lastClass;
+        if (!last) return '<div class="ai-result empty">No classification in this visit yet.</div>';
+        if (!last.ok) return '<div class="ai-result notice error">' + esc(last.repo ? last.repo + ': ' : '') + esc(last.error || 'Classification failed.') + '</div>';
+        var c = last.classification || {};
+        var html = '<div class="ai-result"><div class="ai-bar"><strong>' + esc(last.repo || 'Repository') + '</strong>' + pill(c.priority) + pill(c.deploy_status || '') + '</div>';
+        html += '<div class="sub">Tech stack: ' + esc(c.tech_stack || '—') + '</div>';
+        if (c.tags && c.tags.length) html += '<div class="sub">Tags: ' + esc(c.tags.join(', ')) + '</div>';
+        html += '<p>' + esc(c.rationale || '') + '</p></div>';
+        return html;
+      }
+
+      function showToast(result) {
+        var toast = document.getElementById('toast');
+        if (!result) {
+          toast.hidden = true;
+          toast.innerHTML = '';
+          return;
+        }
+        var c = result.classification;
+        toast.hidden = false;
+        if (!result.ok || !c) {
+          toast.innerHTML = '<strong>Classification</strong><p>' + esc(result.error || 'Classification failed.') + '</p><button type="button" class="btn" id="toast-close">Dismiss</button>';
+        } else {
+          toast.innerHTML = '<div class="ai-bar"><strong>' + esc(result.repo || 'Repository') + '</strong>' + pill(c.priority) + '</div>' +
+            '<div class="sub">' + esc(c.tech_stack || '') + ' · ' + esc(c.deploy_status || '') + '</div>' +
+            '<p>' + esc(c.rationale || '') + '</p><button type="button" class="btn" id="toast-close">Dismiss</button>';
+        }
+        document.getElementById('toast-close').onclick = function () { toast.hidden = true; };
+      }
+
+      function rememberBatch(batch) {
+        var results = batch && batch.results ? batch.results : [];
+        var success = null;
+        results.forEach(function (item) { if (item && item.ok) success = item; });
+        if (success) state.lastClass = success;
+        else if (results.length) state.lastClass = results[results.length - 1];
+        else if (batch && batch.error) state.lastClass = { ok: false, error: batch.error };
+        else if (batch && batch.message) state.lastClass = { ok: false, error: batch.message };
+        var failed = results.filter(function (item) { return item && !item.ok; }).length;
+        var text = '';
+        if (batch && batch.ok === false && batch.error) text = batch.error;
+        else if (!success && batch && batch.message) text = batch.message;
+        else if (success) {
+          text = 'Classified ' + (batch.classified || 1) + '.';
+          if (failed) text += ' ' + failed + ' could not be classified.';
+          if (batch.message) text += ' ' + batch.message;
+        }
+        showNotice(text);
+        showToast(state.lastClass);
+      }
+
+      function runClassify(kind) {
+        if (state.aiBusy) return;
+        var root = document.getElementById('view-' + state.view);
+        var limitInput = root ? root.querySelector('.ai-limit') : null;
+        var limit = limitInput ? Number(limitInput.value) : 5;
+        var selected = Object.keys(state.selected);
+        if (kind === 'selected' && !selected.length) {
+          showNotice('Select at least one repository on Inventory.');
+          return;
+        }
+        state.aiBusy = true;
+        if (root) root.querySelectorAll('[data-ai]').forEach(function (btn) { btn.disabled = true; });
+        var pending = kind === 'selected'
+          ? call('classifySelectedRepos', [selected])
+          : call('classifyInventoryBatch', [limit]);
+        pending.then(function (batch) {
+          state.aiBusy = false;
+          rememberBatch(batch || {});
+          if (state.view === 'overview') loadOverview(true);
+          else if (state.view === 'inventory') loadInventory(true);
+          else if (root) root.querySelectorAll('[data-ai]').forEach(function (btn) { btn.disabled = false; });
+        }).catch(function (err) {
+          state.aiBusy = false;
+          showNotice(err.message);
+          showToast({ ok: false, error: err.message });
+          if (root) root.querySelectorAll('[data-ai]').forEach(function (btn) { btn.disabled = false; });
+        });
       }
 
       function bars(items, total) {
@@ -416,9 +560,9 @@
           hasCi: state.filters.hasCi,
           force: !!force
         };
-        call('getInventoryRows', [payload]).then(function (data) {
+        Promise.all([call('getInventoryRows', [payload]), loadAiStatus()]).then(function (pair) {
           if (req !== inventoryReq || state.view !== 'inventory') return;
-          state.inventory = data;
+          state.inventory = pair[0];
           renderInventory(restoreSearch);
         }).catch(function (err) {
           if (req !== inventoryReq) return;
@@ -431,6 +575,7 @@
         var data = state.inventory;
         var options = data.options || { priorities: [], deployStatuses: [], categories: [] };
         var html = '<div class="page-head"><div><h2>Inventory</h2><p>' + esc(data.matched) + ' of ' + esc(data.total) + ' repositories. Select a name to open GitHub.</p></div></div>';
+        html += aiPanelHtml('Checked rows are classified together. Unchecked rows stay as they are.');
         html += '<div class="filters">';
         html += '<input id="q" type="search" placeholder="Search repo, stack, topics" value="' + esc(state.filters.query) + '" aria-label="Search inventory">';
         html += selectHtml('priority', 'Priority', [['', 'All priorities']].concat(options.priorities.map(function (item) { return [item, item === 'OTHER' ? 'Other' : item]; })), state.filters.priority);
@@ -441,9 +586,11 @@
         if (!data.rows.length) {
           html += '<div class="panel empty">No repositories match these filters.</div>';
         } else {
-          html += '<div class="table-wrap"><table><thead><tr><th>Repo</th><th>Priority</th><th>Score</th><th>Stars</th><th>CI</th><th>Deploy</th><th>Category</th><th></th></tr></thead><tbody>';
+          html += '<div class="table-wrap"><table><thead><tr><th></th><th>Repo</th><th>Priority</th><th>Score</th><th>Stars</th><th>CI</th><th>Deploy</th><th>Category</th><th></th></tr></thead><tbody>';
           data.rows.forEach(function (row, index) {
-            html += '<tr><td><button type="button" class="linkish" data-open="' + index + '">' + esc(row.repo) + '</button>';
+            var picked = !!state.selected[row.repo];
+            html += '<tr><td><input class="check inv-pick" type="checkbox" data-repo="' + esc(row.repo) + '"' + (picked ? ' checked' : '') + ' aria-label="Select ' + esc(row.repo) + '"></td>';
+            html += '<td><button type="button" class="linkish" data-open="' + index + '">' + esc(row.repo) + '</button>';
             if (row.description) html += '<div class="sub">' + esc(row.description) + '</div>';
             if (row.stack) html += '<div class="sub">' + esc(row.stack) + '</div>';
             html += '</td><td>' + pill(row.priority) + '</td><td>' + esc(row.score === '' ? '—' : row.score) + '</td><td>' + esc(row.stars === '' ? '—' : row.stars) + '</td><td>' + yesNo(row.hasCi) + '</td><td>' + pill(row.deployStatus) + '</td><td>' + esc(row.category || '—') + '</td>';
@@ -505,8 +652,10 @@
         });
         html += '</dl><div class="filters">';
         html += '<button type="button" class="btn primary" id="open-github">Open GitHub</button>';
-        if (state.inventory.editable) html += '<button type="button" class="btn" id="enrich">Refresh from GitHub</button>';
-        else html += '<p class="hint" style="color:var(--muted)">GitHub refresh is available when you are signed in as an editor. Anonymous visitors can view only.</p>';
+        if (state.inventory.editable) {
+          html += '<button type="button" class="btn primary" id="classify-one">Classify</button>';
+          html += '<button type="button" class="btn" id="enrich">Refresh from GitHub</button>';
+        } else html += '<p class="hint" style="color:var(--muted)">Classify and GitHub refresh are available when you are signed in as an editor. Anonymous visitors can view only.</p>';
         html += '</div></aside></div>';
         var host = document.getElementById('drawer');
         host.innerHTML = html;
@@ -527,6 +676,26 @@
               enrich.disabled = false;
               enrich.textContent = 'Refresh from GitHub';
               showNotice(err.message);
+            });
+          };
+        }
+        var classifyOne = document.getElementById('classify-one');
+        if (classifyOne) {
+          classifyOne.onclick = function () {
+            classifyOne.disabled = true;
+            classifyOne.textContent = 'Classifying…';
+            call('classifyRepo', [row.repo.indexOf('/') > 0 ? row.repo.split('/')[0] : '', row.repo.indexOf('/') > 0 ? row.repo.split('/').slice(1).join('/') : row.repo]).then(function (result) {
+              state.lastClass = result;
+              if (result && result.ok === false) showNotice(result.error || 'Classification failed.');
+              else showNotice('Classified ' + (result && result.repo ? result.repo : row.repo) + '.');
+              showToast(result);
+              host.innerHTML = '';
+              loadInventory(true);
+            }).catch(function (err) {
+              classifyOne.disabled = false;
+              classifyOne.textContent = 'Classify';
+              showNotice(err.message);
+              showToast({ ok: false, error: err.message });
             });
           };
         }
@@ -628,7 +797,9 @@
         var html = '<div class="page-head"><div><h2>Webhooks</h2><p>Recent rows from ' + esc(data.logSheet) + '.</p></div></div>';
         html += '<div class="kpis">';
         html += healthCard('Webhook secret', data.secretConfigured ? 'Set' : 'Missing', data.secretConfigured ? 'doPost can authorize' : 'Set GITHUB_WEBHOOK_SECRET');
-        html += healthCard('GitHub token', data.tokenConfigured ? 'Set' : 'Optional', 'Used only by Refresh from GitHub');
+        html += healthCard('GitHub token', data.tokenConfigured ? 'Set' : 'Not set', data.tokenConfigured ? 'Authenticated GitHub reads' : 'Public rate limit until GITHUB_TOKEN is set');
+        html += healthCard('Gemini', data.geminiConfigured ? 'Set' : 'Not set', data.geminiConfigured ? 'Classify can call Gemini' : 'Set GEMINI_API_KEY to classify');
+        html += healthCard('Auto-classify', data.autoClassify ? 'On' : 'Off', 'AI_AUTO_CLASSIFY on repository events and default-branch pushes');
         html += healthCard('Last event', data.lastEvent ? data.lastEvent.event : 'None', data.lastEvent ? data.lastEvent.timestamp : 'Waiting for the first delivery');
         html += healthCard('Logged just now', data.events.length, 'Newest ' + data.events.length + ' rows');
         html += '</div>';
@@ -658,6 +829,23 @@
         var button = event.target.closest('button');
         if (!button) return;
         showView(button.getAttribute('data-view'));
+      });
+
+      document.getElementById('main').addEventListener('click', function (event) {
+        var action = event.target.closest('[data-ai]');
+        if (!action) return;
+        runClassify(action.getAttribute('data-ai'));
+      });
+
+      document.getElementById('view-inventory').addEventListener('change', function (event) {
+        var box = event.target.closest('.inv-pick');
+        if (!box) return;
+        var repo = box.getAttribute('data-repo');
+        if (!repo) return;
+        if (box.checked) state.selected[repo] = true;
+        else delete state.selected[repo];
+        var label = document.querySelector('#view-inventory [data-ai="selected"]');
+        if (label) label.textContent = 'Classify selected (' + Object.keys(state.selected).length + ')';
       });
 
       document.getElementById('view-inventory').addEventListener('click', function (event) {

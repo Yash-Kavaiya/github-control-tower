@@ -13,7 +13,7 @@ function read(name) {
 
 const context = vm.createContext({ console: console });
 vm.runInContext(
-  [read('Main.gs'), read('Api.gs'), read('Webhook.gs')].join('\n'),
+  [read('Main.gs'), read('Api.gs'), read('Webhook.gs'), read('Ai.gs')].join('\n'),
   context,
   { filename: 'apps-script.js' }
 );
@@ -37,6 +37,8 @@ test('manifest is clasp-ready for Asia/Calcutta and anonymous webhooks', () => {
   assert.equal(manifest.webapp.executeAs, 'USER_DEPLOYING');
   assert.equal(manifest.webapp.access, 'ANYONE_ANONYMOUS');
   assert.ok(manifest.oauthScopes.includes('https://www.googleapis.com/auth/spreadsheets'));
+  assert.ok(manifest.urlFetchWhitelist.includes('https://api.github.com/'));
+  assert.ok(manifest.urlFetchWhitelist.includes('https://generativelanguage.googleapis.com/'));
   assert.equal(api.CT.SPREADSHEET_ID, '1-t4uqgfBsNmDrkQCXIuuju5K1r2M0m_oSZu00aGFt1w');
   assert.equal(api.CT.INVENTORY_HEADER_ROW, 4);
   assert.equal(api.CT.INVENTORY_DATA_START, 5);
@@ -52,12 +54,14 @@ test('html and gs files do not share a basename', () => {
   Object.keys(counts).forEach((name) => assert.equal(counts[name], 1, name));
   assert.match(read('Main.gs'), /createHtmlOutputFromFile\('Index'\)/);
   assert.match(read('Main.gs'), /createHtmlOutputFromFile\('Sidebar'\)/);
-  assert.doesNotMatch(read('appsscript.json') + read('Main.gs') + read('Api.gs') + read('Webhook.gs'), /ghp_|github_pat_|GITHUB_WEBHOOK_SECRET['"]\s*:\s*['"][^'"]+/);
+  const sources = ['appsscript.json', 'Main.gs', 'Api.gs', 'Webhook.gs', 'Ai.gs', 'Index.html', 'Sidebar.html', 'README.md'].map(read).join('\n');
+  assert.doesNotMatch(sources, /ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AIza[0-9A-Za-z_-]{20,}/);
+  assert.doesNotMatch(sources, /GITHUB_WEBHOOK_SECRET['"]\s*:\s*['"][^'"]+/);
 });
 
 test('no duplicate function declarations', () => {
   const seen = {};
-  ['Main.gs', 'Api.gs', 'Webhook.gs'].forEach((file) => {
+  ['Main.gs', 'Api.gs', 'Webhook.gs', 'Ai.gs'].forEach((file) => {
     const re = /^function\s+([A-Za-z0-9_]+)\s*\(/gm;
     let match;
     const source = read(file);
@@ -66,7 +70,7 @@ test('no duplicate function declarations', () => {
       seen[match[1]] = file;
     }
   });
-  ['getOverviewMetrics', 'getInventoryRows', 'getPriorities', 'getDeployRows', 'updatePriorityStatus', 'getWebhookHealth', 'doGet', 'doPost', 'onOpen'].forEach((name) => {
+  ['getOverviewMetrics', 'getInventoryRows', 'getPriorities', 'getDeployRows', 'updatePriorityStatus', 'getWebhookHealth', 'doGet', 'doPost', 'onOpen', 'classifyRepo', 'classifyInventoryBatch', 'classifySelectedRepos', 'getAiStatus', 'listOwnerRepos'].forEach((name) => {
     assert.ok(seen[name], name);
   });
 });
@@ -249,4 +253,159 @@ test('editors and status guards fail closed for anonymous callers', () => {
   assert.deepEqual(plain(api.repoCoordinates_('demo', 'https://github.com/sample-org/demo')), { owner: 'sample-org', repo: 'demo' });
   assert.deepEqual(plain(api.repoCoordinates_('sample-org/demo.git', '')), { owner: 'sample-org', repo: 'demo' });
   assert.equal(api.repoCoordinates_('demo', ''), null);
+});
+
+test('github headers send a bearer token only when one is configured', () => {
+  const anonymous = api.githubHeaders_('');
+  assert.equal(anonymous.Authorization, undefined);
+  assert.equal(anonymous.Accept, 'application/vnd.github+json');
+  assert.equal(api.githubHeaders_('placeholder').Authorization, 'Bearer placeholder');
+  const limited = api.githubFailureMessage_(403, '{"message":"API rate limit exceeded"}', { 'X-RateLimit-Remaining': '0' }, false, '/repos/acme/demo');
+  assert.match(limited, /Set GITHUB_TOKEN/);
+  assert.doesNotMatch(limited, /Bearer|placeholder|ghp_/);
+  const authed = api.githubFailureMessage_(429, '', {}, true, '/repos/acme/demo');
+  assert.match(authed, /rate-limit window/i);
+  assert.doesNotMatch(authed, /Set GITHUB_TOKEN/);
+  assert.match(api.githubFailureMessage_(401, '', {}, true, '/repos/acme/demo'), /HTTP 401/);
+  assert.match(api.githubFailureMessage_(404, '', {}, false, '/repos/acme/demo'), /private/);
+});
+
+test('gemini classification parses fenced json, synonyms, and api envelopes', () => {
+  const fenced = [
+    '```json',
+    '{"priority":"high","tech_stack":"Python, FastAPI","deploy_status":"staging","rationale":"Demo service with a staging homepage.","tags":["ml","ML","=skip"]}',
+    '```'
+  ].join('\n');
+  const parsed = api.parseGeminiClassification_(fenced);
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.classification.priority, 'P1');
+  assert.equal(parsed.classification.deploy_status, 'demo');
+  assert.equal(parsed.classification.tech_stack, 'Python, FastAPI');
+  assert.deepEqual(plain(parsed.classification.tags), ['ml']);
+
+  assert.equal(api.normalizePriorityToken_('P2 - soon'), 'P2');
+  assert.equal(api.normalizePriorityToken_('medium'), 'P2');
+  assert.equal(api.normalizePriorityToken_('3'), 'P3');
+  assert.equal(api.normalizePriorityToken_('later'), '');
+  assert.equal(api.normalizeDeployHint_('in production'), 'live');
+  assert.equal(api.normalizeDeployHint_('not deployed'), 'none');
+  assert.equal(api.normalizeDeployHint_('preview site'), 'demo');
+
+  const envelope = {
+    candidates: [{
+      content: {
+        parts: [
+          { thought: true, text: '{"priority":"P1"}' },
+          { text: '{"priority":"P3","tech_stack":"Notes","deploy_status":"none","rationale":"Learning repo with no deploy signal.","tags":["learning"]}' }
+        ]
+      }
+    }]
+  };
+  const fromApi = api.parseGeminiClassification_(envelope);
+  assert.equal(fromApi.classification.priority, 'P3');
+  assert.equal(fromApi.classification.deploy_status, 'none');
+  assert.match(fromApi.classification.rationale, /Learning repo/);
+
+  const wrapped = api.parseGeminiClassification_('note {"priority":"P2","tech_stack":"Go","deploy_status":"live","rationale":"Ships on Cloud Run."} trailing');
+  assert.equal(wrapped.classification.priority, 'P2');
+  assert.equal(wrapped.classification.deploy_status, 'live');
+
+  assert.equal(api.parseGeminiClassification_('not json').ok, false);
+  assert.equal(api.parseGeminiClassification_('{"priority":"P1","tech_stack":"Go","deploy_status":"live"}').ok, false);
+  assert.match(api.parseGeminiClassification_('{"priority":"later","tech_stack":"Go","deploy_status":"live","rationale":"No."}').error, /P1, P2, or P3/);
+});
+
+test('classification writes priority and tech stack without clobbering a human deploy status', () => {
+  const classification = {
+    priority: 'P2',
+    tech_stack: 'Go, Cloud Run',
+    deploy_status: 'live',
+    rationale: 'Ships on Cloud Run.',
+    tags: ['gcp']
+  };
+  const kept = api.classificationSheetPatch_(classification, { deployStatus: 'Failed', description: 'keep me' });
+  assert.equal(kept.priority, 'P2');
+  assert.equal(kept.stack, 'Go, Cloud Run');
+  assert.equal(kept.deployStatus, undefined);
+  assert.equal(kept.description, undefined);
+
+  const filled = api.classificationSheetPatch_(classification, { deployStatus: '' });
+  assert.equal(filled.deployStatus, 'Live');
+  const refreshHint = api.classificationSheetPatch_(
+    Object.assign({}, classification, { deploy_status: 'none' }),
+    { deployStatus: 'Demo' }
+  );
+  assert.equal(refreshHint.deployStatus, 'None');
+  assert.equal(api.classificationSheetPatch_(classification, { deployStatus: 'Live' }).deployStatus, undefined);
+});
+
+test('batch selection, auto-classify gate, and gemini request omit secrets', () => {
+  assert.equal(api.clampBatchLimit_(undefined), 5);
+  assert.equal(api.clampBatchLimit_(0), 5);
+  assert.equal(api.clampBatchLimit_('3'), 3);
+  assert.equal(api.clampBatchLimit_(40), 8);
+  assert.equal(api.isAutoClassifyEnabled_(''), false);
+  assert.equal(api.isAutoClassifyEnabled_('true'), true);
+  assert.equal(api.isAutoClassifyEnabled_('YES'), true);
+  assert.equal(api.isUnclassifiedPriority_(''), true);
+  assert.equal(api.isUnclassifiedPriority_('Later'), true);
+  assert.equal(api.isUnclassifiedPriority_('P1 this week'), false);
+
+  const rows = [
+    { repo: 'acme/one', url: '', priority: '', deployStatus: '' },
+    { repo: 'two', url: '', priority: 'Later', deployStatus: '' },
+    { repo: 'acme/three', url: 'https://github.com/acme/three', priority: 'P1', deployStatus: 'Live' },
+    { repo: 'acme/four', url: 'https://github.com/acme/four', priority: '', deployStatus: 'Demo' }
+  ];
+  const part = api.partitionUnclassified_(rows, 1);
+  assert.equal(part.limit, 1);
+  assert.equal(part.ready.length, 1);
+  assert.equal(part.ready[0].repo, 'acme/one');
+  assert.equal(part.skipped, 1);
+
+  const repoContext = api.buildRepoClassifyContext_({
+    name: 'one',
+    full_name: 'acme/one',
+    description: 'Status board',
+    language: 'JavaScript',
+    topics: ['sheets'],
+    homepage: 'https://example.com',
+    stargazers_count: 2
+  }, { JavaScript: 10, HTML: 2 }, 'Hello readme');
+  assert.equal(repoContext.language, 'JavaScript');
+  assert.deepEqual(plain(repoContext.languages), ['JavaScript', 'HTML']);
+  assert.equal(repoContext.homepage, 'https://example.com');
+  assert.match(api.buildClassifyPrompt_(repoContext), /Status board/);
+  const body = api.buildGeminiRequestBody_(repoContext);
+  assert.equal(body.generationConfig.responseFormat.text.mimeType, 'application/json');
+  assert.equal(body.generationConfig.thinkingConfig.thinkingLevel, 'low');
+  assert.equal(JSON.stringify(body).includes('AIza'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(body, 'apiKey'), false);
+
+  const marker = ['A', 'I', 'z', 'a', 'Sy', 'NotARealKey000000'].join('');
+  const cleaned = api.geminiHttpError_(500, JSON.stringify({ error: { message: 'bad ' + marker } }));
+  assert.equal(cleaned.includes(marker), false);
+  assert.match(cleaned, /\[redacted\]/);
+  assert.match(api.geminiHttpError_(400, '{"error":{"message":"API key not valid"}}'), /GEMINI_API_KEY/);
+  assert.match(api.geminiHttpError_(404, '{}'), /gemini-3\.8-flash/);
+  assert.equal(api.geminiModel_(), 'gemini-3.8-flash');
+
+  const push = { ref: 'refs/heads/main', repository: { default_branch: 'main' } };
+  assert.equal(api.shouldAutoClassifyEvent_('push', push, true, '', 'true'), true);
+  assert.equal(api.shouldAutoClassifyEvent_('push', { ref: 'refs/heads/feature', repository: { default_branch: 'main' } }, true, '', 'true'), false);
+  assert.equal(api.shouldAutoClassifyEvent_('repository', { action: 'created', repository: {} }, true, '', ''), false);
+  assert.equal(api.shouldAutoClassifyEvent_('repository', { action: 'deleted', repository: {} }, true, '', 'yes'), false);
+  assert.equal(api.shouldAutoClassifyEvent_('star', { repository: {} }, true, '', 'true'), false);
+  assert.equal(api.shouldAutoClassifyEvent_('push', push, false, 'P1', 'true'), false);
+  assert.equal(api.shouldAutoClassifyEvent_('repository', { action: 'created', repository: {} }, false, '', 'true'), true);
+  assert.equal(api.isSignificantPush_({ ref: 'refs/heads/master', repository: {} }), true);
+
+  context.Utilities = context.Utilities || {};
+  context.Utilities.base64Decode = (value) => Array.from(Buffer.from(value, 'base64'));
+  context.Utilities.newBlob = (bytes) => ({
+    getDataAsString: () => Buffer.from(bytes.map((byte) => (byte < 0 ? byte + 256 : byte))).toString('utf8')
+  });
+  assert.equal(api.decodeGithubBase64_(Buffer.from('Hello readme', 'utf8').toString('base64')), 'Hello readme');
+  assert.equal(api.clipReadmeSnippet_('x'.repeat(20), 8).endsWith('…'), true);
+  assert.equal(api.summarizeGithubRepos_([{ full_name: 'acme/one', description: 'A', private: false, language: 'Go', html_url: 'https://github.com/acme/one', stargazers_count: 1, topics: ['a'] }])[0].full_name, 'acme/one');
 });

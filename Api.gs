@@ -92,6 +92,8 @@ function getWebhookHealth() {
   return {
     secretConfigured: !!getScriptProperty_('GITHUB_WEBHOOK_SECRET'),
     tokenConfigured: !!getScriptProperty_('GITHUB_TOKEN'),
+    geminiConfigured: !!getScriptProperty_('GEMINI_API_KEY'),
+    autoClassify: isAutoClassifyEnabled_(getScriptProperty_('AI_AUTO_CLASSIFY')),
     editorsConfigured: !!getScriptProperty_('CONTROL_TOWER_EDITORS'),
     editable: canMutate_(),
     webAppUrl: getWebAppUrl(),
@@ -109,7 +111,6 @@ function enrichInventoryRepo(repo) {
   var key = sanitizeRepoKey_(repo);
   if (!key) throw new Error('Repository name is empty or not allowed.');
   var token = getScriptProperty_('GITHUB_TOKEN');
-  if (!token) throw new Error('GITHUB_TOKEN is not set.');
 
   var loaded = readInventoryFromSheet_();
   var match = findInventoryMatch_(loaded.rows, repoShortName_(key), key.indexOf('/') > 0 ? key : '');
@@ -528,14 +529,18 @@ function repoShortName_(name) {
 
 function githubGet_(path, token) {
   var response = UrlFetchApp.fetch('https://api.github.com' + path, {
+    method: 'get',
     headers: githubHeaders_(token),
     muteHttpExceptions: true
   });
   var code = response.getResponseCode();
+  var text = response.getContentText() || '';
   if (code < 200 || code >= 300) {
-    throw new Error('GitHub returned HTTP ' + code + ' for ' + path + '.');
+    var headers = {};
+    try { headers = response.getHeaders() || {}; } catch (err) { headers = {}; }
+    throw new Error(githubFailureMessage_(code, text, headers, !!token, path));
   }
-  return JSON.parse(response.getContentText() || '{}');
+  return JSON.parse(text || '{}');
 }
 
 function githubGetOptional_(path, token) {
@@ -560,10 +565,37 @@ function githubStatus_(path, token) {
 }
 
 function githubHeaders_(token) {
-  return {
-    Authorization: 'Bearer ' + token,
+  var headers = {
     Accept: 'application/vnd.github+json',
     'User-Agent': 'github-control-tower',
     'X-GitHub-Api-Version': '2022-11-28'
   };
+  if (token) headers.Authorization = 'Bearer ' + token;
+  return headers;
+}
+
+function headerValue_(headers, name) {
+  if (!headers) return '';
+  var target = String(name || '').toLowerCase();
+  var keys = Object.keys(headers);
+  var i;
+  for (i = 0; i < keys.length; i++) {
+    if (String(keys[i]).toLowerCase() === target) return String(headers[keys[i]] == null ? '' : headers[keys[i]]);
+  }
+  return '';
+}
+
+function githubFailureMessage_(code, body, headers, hasToken, path) {
+  var text = String(body || '');
+  var remaining = headerValue_(headers, 'X-RateLimit-Remaining');
+  var rateLimited = code === 429 || remaining === '0' || /rate limit/i.test(text) || /secondary rate/i.test(text);
+  var where = path ? ' for ' + path : '';
+  if ((code === 403 || code === 429) && rateLimited) {
+    if (!hasToken) return 'GitHub rate limit reached for unauthenticated requests. Set GITHUB_TOKEN in Script properties to raise the limit.';
+    return 'GitHub rate limit reached. Wait for the rate-limit window to reset, then try again.';
+  }
+  if (code === 401) return 'GitHub rejected the credentials (HTTP 401). Check GITHUB_TOKEN in Script properties.';
+  if (code === 404 && !hasToken) return 'GitHub returned HTTP 404' + where + '. If the repository is private, set GITHUB_TOKEN in Script properties.';
+  if (code === 403 && !hasToken) return 'GitHub returned HTTP 403' + where + '. Set GITHUB_TOKEN in Script properties if this repository is private.';
+  return 'GitHub returned HTTP ' + code + where + '.';
 }

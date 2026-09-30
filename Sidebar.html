@@ -51,6 +51,7 @@
   </header>
   <div id="error" class="error" hidden></div>
   <div id="list" class="list"></div>
+  <div id="ai" class="list"></div>
   <a class="btn" id="open" hidden target="_blank" rel="noopener">Open web app</a>
   <button class="secondary" id="retry" type="button">Refresh KPIs</button>
   <p class="note" id="note">Status changes from this sidebar run as you. Anonymous visitors to the public web app can view and send webhooks, and cannot edit.</p>
@@ -79,13 +80,23 @@
             card('Average score', score) +
             card('CI coverage', ci);
           note.textContent = 'Updated ' + (data.generatedAt || '') + ' Asia/Calcutta. ' +
-            (data.editable ? 'This account can edit priority status.' : 'This visit is view only.');
+            (data.editable ? 'This account can classify and edit priority status from the web app.' : 'This visit is view only.');
         })
         .withFailureHandler(function (err) {
           document.getElementById('list').innerHTML = '';
           showError(err && err.message ? err.message : 'Could not read the inventory.');
         })
         .getOverviewMetrics(true);
+      google.script.run
+        .withSuccessHandler(function (status) {
+          var gemini = status && status.geminiConfigured ? 'Configured' : 'Not set';
+          var token = status && status.githubTokenConfigured ? 'Configured' : 'Not set';
+          document.getElementById('ai').innerHTML =
+            card('Gemini', gemini) +
+            card('GitHub token', token);
+        })
+        .withFailureHandler(function () {})
+        .getAiStatus();
       google.script.run
         .withSuccessHandler(function (url) {
           var link = document.getElementById('open');

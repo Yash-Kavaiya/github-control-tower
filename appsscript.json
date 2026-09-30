@@ -11,7 +11,8 @@
     "https://www.googleapis.com/auth/userinfo.email"
   ],
   "urlFetchWhitelist": [
-    "https://api.github.com/"
+    "https://api.github.com/",
+    "https://generativelanguage.googleapis.com/"
   ],
   "webapp": {
     "executeAs": "USER_DEPLOYING",
